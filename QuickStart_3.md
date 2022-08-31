@@ -130,3 +130,121 @@
     ![img17](./QuickStart_3/img17.PNG)
 
 
+----------------------------------start
+
+<h1 id="9">09_开发板挂载Ubuntu的NFS目录_STM32MP157_Pro</h1>
+
+**什麼是NFS協議?**
+
+- NFS實現了一個跨越網絡的文件訪問功能，如下圖可以簡要說明其原理。其整個架構為Client-Server架構，客戶端和服務端通過RPC協議進行通信，RPC協議可以簡單的理解為一個基於TCP的應用層協議，它簡化命令和數據的傳輸。
+
+- NFS最大的特點是將服務端的文件系統目錄樹映射到客戶端，而在客戶端訪問該目錄樹與訪問本地文件系統沒有任何差別，客戶端並不知道這個文件系統目錄樹是本地的還是遠在另外一台服務器。
+
+    ![img18](./QuickStart_3/img18.PNG)
+
+- 我們為什麼要掛載ubuntu的nfs目錄？
+我們有些時候需要多次調試開發板文件系統內的某個應用程序，這就需要多次進行編譯拷貝等操作，所以我們在前期進行調試時可以直接讓開發板使用ubuntu的nfs目錄下文件系統來進行遠程調試，用以提高調試效率，加快研發速度。
+
+**在Ubuntu中安裝、配置NFS**
+
+- Ubuntu未安裝NFS服務，那麼在確保Ubuntu可以上網的前提下，執行以下命令：
+
+    ```Shell
+    sudo apt-get install nfs-kernel-server
+    ```
+
+- 還得修改/etc/exports，添加類似以下的內容，下面的例子裡允許開發板通過NFS訪問Ubuntu的/home/book目錄：
+
+    ```Shell
+    /home/book   *(rw,nohide,insecure,no_subtree_check,async,no_root_squash)
+    ```
+
+- 重啟NFS服務，在Ubuntu上執行以下命令：
+
+    ```Shell
+    sudo /etc/init.d/nfs-kernel-server restart
+    ```
+
+- 若Ubuntu有安裝NFS服務，可以查看一下/etc/exports的內容，就知道開發板可以掛載哪一個目錄。
+
+
+**确定ubuntu的网卡和IP**
+
+- 在Ubuntu终端下使用ifconfig命令来查看桥接模式获取到的网卡 
+
+    ![img19](./QuickStart_3/img19.PNG)
+
+**在开发板上执行mount nfs命令**
+
+- ubuntu的IP是192.168.5.11，確保開發板能ping通ubuntu後，在開發板上執行以下命令掛載NFS：
+
+    ```Shell
+    mount -t nfs -o nolock,vers=3 192.168.５.1１:/home/book/nfs_rootfs /mnt
+    ```
+
+- mount成功之後，開發板在/mnt目錄下讀寫檔時，實際上訪問的就是Ubuntu中的/home/book/nfs_rootfs目錄，所以開發板和Ubuntu之間通過NFS可以很方便地共用檔。
+
+- 在開發過程中，在Ubuntu中編譯好程式後放入/home/book/nfs_rootfs目錄，開發板mount nfs後就可以直接使用/mnt下的檔。
+
+- 開發板上不一定安裝有FTP服務、SSH等服務，所以不一定能使用FTP等工具登錄開發板。
+
+- 但是開發板的系統一般都自帶mount命令，並且支援NFS檔案系統。所以可以在開發板上執行mount命令掛載Ubuntu的某個目錄。這樣就可以在開發板和Ubuntu之間傳檔了。
+
+<h1 id="10">10_开发板的第1个APP</h1>
+
+- 編譯指令
+
+    ```Shell
+    # PC機編譯器時用的命令是：
+    gcc  -o  hello  hello.c
+
+    # 開發板編譯器時用的命令類似下述命令(不同的開發板gcc的首碼可能不同)：
+    arm-buildroot-linux-gnueabihf-gcc  -o  hello  hello.c
+    ```
+
+## 配置交叉編譯工具鏈
+
+- 交叉編譯工具鏈用來在Ubuntu主機上編譯應用程式，而這些應用程式是在ARM等其他平臺上運行。
+
+- 設置交叉編譯工具主要是設置PATH， ARCH和CROSS_COMPILE三個環境變數
+
+**永久生效**
+
+- 修改使用者設定檔
+
+    ```Shell
+    book@100ask:~$ vim  ~/.bashrc
+
+    # 在行尾添加或修改，加上下面幾行：
+    export ARCH=arm
+    export CROSS_COMPILE=arm-buildroot-linux-gnueabihf-
+    export PATH=$PATH:/home/book/100ask_stm32mp157_pro-sdk/ToolChain/arm-buildroot-linux-gnueabihf_sdk-buildroot/bin
+
+    # 載入這些設置的環境變數
+    book@100ask:~$ source  ~/.bashrc
+    ```
+
+**臨時生效**
+
+- 手工執行 `export` 命令設置環境變數，該設置只對當前終端有效(另開一個終端需要再次設置)
+
+    ```Shell
+    book@100ask:~$ export ARCH=arm
+    book@100ask:~$ export CROSS_COMPILE=arm-buildroot-linux-gnueabihf-
+    book@100ask:~$ export PATH=$PATH:/home/book/100ask_stm32mp157_pro-sdk/ToolChain/arm-buildroot-linux-gnueabihf_sdk-buildroot/bin
+    ```
+
+**手動指定**
+
+- 先設置**PATH環境變數**，
+  
+- 在make編譯時指定**ARCH架構**與**CROSS_COMPILE交叉編譯工具鏈**(執行make命令時指定的參數，只對當前命令有效；下次執行make時仍需要再次指定那些參數)。
+
+    ```Shell
+    book@100ask:~$ export PATH=$PATH:/home/book/100ask_stm32mp157_pro-sdk/ToolChain/arm-buildroot-linux-gnueabihf_sdk-buildroot/bin
+    book@100ask:~$ make ARCH=arm CROSS_COMPILE=arm-buildroot-linux-gnueabihf-
+    ```
+
+
+
+

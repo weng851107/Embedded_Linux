@@ -72,6 +72,8 @@
 
 ![img14](./QuickStart_2/img14.PNG)
 
+![img31](./QuickStart_2/img31.PNG)
+
 <h1 id="5">05_权限与属性命令</h1>
 
 ![img15](./QuickStart_2/img15.PNG)
@@ -100,9 +102,19 @@
 
 - 常用的 `tar`
 
-    ![img22](./QuickStart_2/img22.PNG)
+    ```Shell
+    -c(create)：表示創建用來生成檔包 。
+    -x：表示提取，從檔包中提取檔。
+    -t：可以查看壓縮的檔。
+    -z：使用gzip方式進行處理，它與”c“結合就表示壓縮，與”x“結合就表示解壓縮。
+    -j：使用bzip2方式進行處理，它與”c“結合就表示壓縮，與”x“結合就表示解壓縮。 
+    -v(verbose)：詳細報告tar處理的資訊。
+    -f(file)：表示檔，後面接著一個檔案名。 -C <指定目錄> 解壓到指定目錄。
+    ```
 
 - 用 `tar` 壓縮(解壓)文件(目錄)
+
+    ![img22](./QuickStart_2/img22.PNG)
 
     ![img23](./QuickStart_2/img23.PNG)
 
@@ -110,13 +122,28 @@
 
 <h1 id="8">08_网络命令</h1>
 
-![img25](./QuickStart_2/img25.PNG)
+- `ifconfig`
+
+    ![img25](./QuickStart_2/img25.PNG)
+
+- `route`
+
+    ![img25_1](./QuickStart_2/img25_1.PNG)
+
+    ![img25_2](./QuickStart_2/img25_2.PNG)
 
 <h1 id="9">09_VI编辑器_新建_保存_浏览</h1>
 
 ![img26](./QuickStart_2/img26.PNG)
 
 ![img27](./QuickStart_2/img27.PNG)
+
+- nG或ngg：光标移动到第 n行首。
+
+- 屏幕翻滚
+  - Ctrl + f	屏幕向下翻一页，相当于下一页。
+  - Ctrl + b	屏幕向上翻一页，相当于上一页。
+
 
 <h1 id="10">10_VI编辑器_编辑</h1>
 
