@@ -19,31 +19,31 @@
 
 - 單晶片
 
-    ![img00](./QuickStart_3/img00.PNG)
+    ![img00](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img00.PNG)
 
 - 嵌入式Linux
 
-    ![img01](./QuickStart_3/img01.PNG)
+    ![img01](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img01.PNG)
 
-    ![img02](./QuickStart_3/img02.PNG)
+    ![img02](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img02.PNG)
 
-    ![img03](./QuickStart_3/img03.PNG)
+    ![img03](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img03.PNG)
 
 <h1 id="2">02_配置VMware使用双网卡之NAT网卡</h1>
 
-![img04](./QuickStart_3/img04.PNG)
+![img04](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img04.PNG)
 
-![img05](./QuickStart_3/img05.PNG)
+![img05](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img05.PNG)
 
-![img06](./QuickStart_3/img06.PNG)
+![img06](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img06.PNG)
 
 <h1 id="3">03_配置VMware使用双网之桥接网卡(USB网卡)_STM32MP157_Pro</h1>
 
 - 設置VMware, Windows與開發版的網路配置
 
-    ![img07](./QuickStart_3/img07.PNG)
+    ![img07](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img07.PNG)
 
-    ![img08](./QuickStart_3/img08.PNG)
+    ![img08](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img08.PNG)
 
 - 在VMware中新增`橋接網卡`，且以管理員身份運行虛擬網路編輯器(vmnet)，從中手動選擇要橋接的網卡為USB網卡
 
@@ -56,7 +56,7 @@
     ifconfig eth0 192.168.5.9
     ```
 
-    ![img09](./QuickStart_3/img09.PNG)
+    ![img09](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img09.PNG)
 
   - 設置IP為固定IP，每次開機都不變
 
@@ -70,13 +70,13 @@
         Gateway=192.168.5.1
     ```
 
-    ![img10](./QuickStart_3/img10.PNG)
+    ![img10](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img10.PNG)
 
 <h1 id="4">04_配置VMware使用双网之桥接网卡(路由器)_STM32MP157_Pro</h1>
 
 - 配置橋接網卡，除了使用**USB網卡**之外，也可以使用**路由器**(透過有線或無線)
 
-    ![img11](./QuickStart_3/img11.PNG)
+    ![img11](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img11.PNG)
 
 - 開發版透過路由器自動配置IP
   - 若有固定IP的文件，要刪除它
@@ -91,7 +91,7 @@
     udhcpc -i eth0
     ```
 
-    ![img12](./QuickStart_3/img12.PNG)
+    ![img12](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img12.PNG)
 
 <h1 id="5">05_安装软件_远程登录_传文件</h1>
 
@@ -107,7 +107,7 @@
 
 - 配置編譯code的工具鏈
 
-    ![img13](./QuickStart_3/img13.PNG)
+    ![img13](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img13.PNG)
 
 <h1 id="7">07_传输源码并创建sourceinsight工程_STM32MP157_Pro</h1>
 
@@ -117,17 +117,17 @@
 
 - 選擇開發版要啟動的模式
 
-    ![img14](./QuickStart_3/img14.PNG)
+    ![img14](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img14.PNG)
 
 - 當開發版接USB至PC後，基本上Windows會自動安裝USB驅動程序，若沒有或是跳出警告讀不到USB驅動程序，則需要自行手動安裝
 
-    ![img15](./QuickStart_3/img15.PNG)
+    ![img15](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img15.PNG)
 
-    ![img16](./QuickStart_3/img16.PNG)
+    ![img16](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img16.PNG)
 
 - 通常開發版串口的配置參數
 
-    ![img17](./QuickStart_3/img17.PNG)
+    ![img17](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img17.PNG)
 
 
 ----------------------------------start
@@ -140,7 +140,7 @@
 
 - NFS最大的特點是將服務端的文件系統目錄樹映射到客戶端，而在客戶端訪問該目錄樹與訪問本地文件系統沒有任何差別，客戶端並不知道這個文件系統目錄樹是本地的還是遠在另外一台服務器。
 
-    ![img18](./QuickStart_3/img18.PNG)
+    ![img18](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img18.PNG)
 
 - 我們為什麼要掛載ubuntu的nfs目錄？
 我們有些時候需要多次調試開發板文件系統內的某個應用程序，這就需要多次進行編譯拷貝等操作，所以我們在前期進行調試時可以直接讓開發板使用ubuntu的nfs目錄下文件系統來進行遠程調試，用以提高調試效率，加快研發速度。
@@ -172,7 +172,7 @@
 
 - 在Ubuntu终端下使用ifconfig命令来查看桥接模式获取到的网卡 
 
-    ![img19](./QuickStart_3/img19.PNG)
+    ![img19](./[第3篇]_環境搭建與開發板操作(STM32MP157_Pro)/img19.PNG)
 
 **在开发板上执行mount nfs命令**
 
