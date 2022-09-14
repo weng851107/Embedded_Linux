@@ -453,3 +453,76 @@ D = d/
 E = a b c
 ```
 
+### Wildcard
+
+函數Wildcard語法如下：
+
+```bash
+# pattern定義了文件名的格式, wildcard取出其中存在的文件。
+$(wildcard pattern)
+```
+
+這個函數 wildcard 會以 pattern 這個格式，去尋找存在的文件，返回存在文件的名字。
+
+實例：
+
+在該目錄下創建三個文件：a.c b.c c.c
+
+```bash
+files = $(wildcard *.c)
+
+all:
+    @echo files = $(files)
+```
+
+結果：
+
+```bash
+files = a.c b.c c.c
+```
+
+我們也可以用wildcard函數來判斷，真實存在的文件
+
+實例：
+
+```bash
+files2 = a.c b.c c.c d.c e.c  abc
+files3 = $(wildcard $(files2))
+
+all:
+    @echo files3 = $(files3)
+```
+
+結果：
+
+```bash
+files3 = a.c b.c c.c
+```
+
+### patsubst
+
+函數 patsubst 語法如下：
+
+```bash
+$(patsubst pattern,replacement,\$(var))
+```
+
+patsubst 函數是從 var 變量裡面取出每一個值，如果這個符合 pattern 格式，把它替換成 replacement 格式，
+
+實例：
+
+```bash
+
+files2  = a.c b.c c.c d.c e.c abc
+
+dep_files = $(patsubst %.c,%.d,$(files2))
+
+all:
+    @echo dep_files = $(dep_files)
+```
+
+結果：
+
+```bash
+dep_files = a.d b.d c.d d.d e.d abc
+```
