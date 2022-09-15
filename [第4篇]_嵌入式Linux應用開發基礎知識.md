@@ -12,6 +12,7 @@
   - [3-2_Makefile的引入與規則](#3.2)
   - [3-3_Makefile的語法](#3.3)
   - [3-4_Makefile函數](#3.4)
+  - [3-5_Makefile實例](#3.5)
 
 
 
@@ -526,3 +527,208 @@ all:
 ```bash
 dep_files = a.d b.d c.d d.d e.d abc
 ```
+
+<h2 id="3.5">3-5_Makefile實例</h2>
+
+在`c.c`裡面，包含一個頭文件`c.h`，在`c.h`裡面定義一個宏，把這個宏打印出來。
+
+c.c:
+
+```C
+#include <stdio.h>
+#include <c.h>
+
+void func_c()
+{
+	printf("This is C = %d\n", C);
+}
+```
+
+c.h:
+
+```C
+#define C 1
+```
+
+makefile:
+
+```makefile
+test: a.o b.o c.o
+    gcc -o test $^
+
+%.o : %.c
+    gcc -c -o $@ $<
+
+clean:
+    rm *.o test
+
+.PHONY: clean
+```
+
+然後上傳編譯，執行`./test`,打印出：
+
+```bash
+This is B
+This is C =1
+```
+
+測試沒有問題，然後修改`c.h`：
+
+```C
+#define C 2
+```
+
+重新編譯，發現沒有更新程序，運行，結果不變，說明現在的Makefile存在問題。
+
+為什麼會出現這個問題呢， 首先我們test依賴c.o，c.o依賴c.c，如果我們更新c.c，會重新更新整個程序。
+但c.o也依賴c.h，我們更新了c.h，並沒有在Makefile上體現出來，導致c.h的更新，Makefile無法檢測到。
+因此需要添加:
+
+```makefile
+c.o : c.c c.h
+```
+
+現在每次修改c.h，Makefile都能識別到更新操作，從而更新最後輸出文件。
+
+這樣又冒出了一個新的問題，我們怎麼為每個.c文件添加.h文件呢？對於內核，有幾萬個文件，不可能為每個文件依次寫出其頭文件。因此需要做出改進，讓其自動生成頭文件依賴，可以參考這篇文章：http://blog.csdn.net/qq1452008/article/details/50855810
+
+```bash
+gcc -M c.c                          # 打印出依賴
+
+gcc -M -MF c.d c.c                  # 把依賴寫入文件c.d
+
+gcc -c -o c.o c.c -MD -MF c.d       # 編譯c.o, 把依賴寫入文件c.d
+```
+
+修改Makefile如下：
+
+```makefile
+objs = a.o b.o c.o
+
+dep_files := $(patsubst %,.%.d, $(objs))
+dep_files := $(wildcard $(dep_files))
+
+test: $(objs)
+    gcc -o test $^
+
+ifneq ($(dep_files),)
+include $(dep_files)
+endif
+
+%.o : %.c
+    gcc -c -o $@ $< -MD -MF .$@.d
+
+clean:
+    rm *.o test
+
+distclean:
+    rm $(dep_files)
+
+.PHONY: clean	
+```
+
+- 首先用obj變量將.o文件放在一塊。
+- 利用前面講到的函數，把obj裡所有文件都變為.%.d格式，並用變量dep_files表示。
+- 利用前面介紹的wildcard函數，判斷dep_files是否存在。
+- 然後是目標文件test依賴所有的.o文件。
+- 如果dep_files變量不為空，就將其包含進來。
+- 然後就是所有的.o文件都依賴.c文件，且通過-MD -MF生成.d依賴文件。
+- 清理所有的.o文件和目標文件
+- 清理依賴.d文件。
+
+現在我們修改了任何.h文件，最終都會影響最後生成的文件，也沒任何手工添加.h、.c、.o文件，完成了支持頭文件依賴。
+
+### 自動生成頭文件依賴
+
+可以使用C/C++ 編譯器的 `-M` 選項，即自動獲取源文件中包含的頭文件，並生成一個依賴關係。例如，執行下面的命令：
+
+```Shell
+gcc -M main.c 
+```
+
+其輸出如下：
+
+```bash
+main.o : main.c defs.h
+```
+
+由編譯器自動生成依賴關係，這樣做的好處有以下幾點：
+
+- 不必手動書寫若干目標文件的依賴關係，由編譯器自動生成
+- 不管是源文件還是頭文件有更新，目標文件都會重新編譯
+
+**參數介紹**
+
+- `-M`
+
+  - 生成文件的依賴關係，同時也把一些標準庫的頭文件包含了進來
+
+  - 本質是告訴預處理器輸出一個適合make 的規則，用於描述各目標文件的依賴關係。對於每個源文件，預處理器輸出一個make 規則，該規則的目標項(target) 是源文件對應的目標文件名，依賴項(dependency) 是源文件中“#include” 引用的所有文件
+
+  - 該選項默認打開了 `-E` 選項， `-E` 參數的用處是使得編譯器在預處理結束時就停止編譯
+
+    ```bash
+    $ gcc -M main.c
+    # ----------------------------------------------
+    main.o: main.c defs.h \
+    /usr/include/stdio.h \
+    /usr/include/features.h \ 			                                         
+    /usr/include/sys/cdefs.h /usr/include/gnu/stubs.h \         			
+    /usr/lib/gcc-lib/i486-suse-linux/2.95.3/include/stddef.h \ 			 
+    /usr/include/bits/types.h \
+    /usr/include/bits/pthreadtypes.h \ 			
+    /usr/include/_G_config.h /usr/include/wchar.h \ 			
+    /usr/include/bits/wchar.h /usr/include/gconv.h \ 			
+    /usr/lib/gcc-lib/i486-suse-linux/2.95.3/include/stdarg.h \ 			
+    /usr/include/bits/stdio_lim.h
+    ```
+
+- `-MM`
+
+  - 生成文件的依賴關係，和 `-M` 類似，但不包含標準庫的頭文件
+
+    ```bash
+    $ gcc -MM main.c
+    # ---------------------------------------------
+    main.o: main.c defs.h
+    ```
+
+- `-MG`
+
+  - 要求把缺失的頭文件按存在對待，並且假定他們和源文件在同一目錄下，必須和 `-M` 選項一起用。
+
+- `-MF File`
+
+  - 當使用了 `-M` 或者 `-MM` 選項時，則把依賴關係寫入名為`File` 的文件中。
+  - 若同時也使用了 `-MD` 或 `-MMD`，`-MF` 將覆寫輸出的依賴文件的名稱。
+
+    ```bash
+    # 則 -M 輸出的內容就保存在 main.d 文件中了
+    $ gcc -M -MF main.d main.c
+    ```
+
+- `-MD`
+
+  - 等同於 `-M -MF File`，但是默認關閉了 `-E` 選項
+  - 其輸出的文件名是基於 `-o` 選項，若給定了 `-o` 選項，則輸出的文件名是 `-o` 指定的文件名，並添加 `.d` 後綴，若沒有給定，則輸入的文件名作為輸出的文件名，並添加 `.d` 後綴，同時**繼續指定的編譯工作**
+  - `-MD` 不會像 `-M` 那樣阻止正常的編譯任務，因為它默認關閉了`-E` 選項，比如命令中使用了 `-c` 選項，其結果要生成 `.o` 文件，若使用了 `-M` 選項，則不會生成 `.o` 文件，若使用的是 `-MD` 選項，則會生成 `.o` 文件
+
+### CFLAGS
+
+下面再添加CFLAGS，即編譯參數
+
+- 比如加上編譯參數 `-Werror`，把所有的警告當成錯誤
+
+- 可以加上 `-I` 參數，指定頭文件路徑
+    - `-Iinclude` 表示當前的inclue文件夾下。
+此時就可以把c.c文件裡的`#include ".h"`改為`#include <c.h>`，前者表示當**前目錄**，後者表示**編譯器指定的路徑和GCC路徑**。
+
+    ```makefile
+    CFLAGS = -Werror -Iinclude
+
+    …………
+
+
+    %.o : %.c
+        gcc $(CFLAGS) -c -o $@ $< -MD -MF .$@.d
+    ```
