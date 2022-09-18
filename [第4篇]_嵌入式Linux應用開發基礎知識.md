@@ -14,6 +14,7 @@
   - [3-4_Makefile函數](#3.4)
   - [3-5_Makefile實例](#3.5)
   - [3-6_通用Makefile的使用](#3.6)
+    - [通用Makefile的設計思想](#3.6.0)
     - [一、各級子目錄的Makefile](#3.6.1)
     - [二、頂層目錄的Makefile](#3.6.2)
     - [三、頂層目錄的Makefile.build](#3.6.3)
