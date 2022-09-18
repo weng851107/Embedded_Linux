@@ -18,6 +18,7 @@
     - [二、頂層目錄的Makefile](#3.6.2)
     - [三、頂層目錄的Makefile.build](#3.6.3)
     - [四、怎麼使用這套Makefile](#3.6.4)
+  - [3-7_通用Makefile的解析](#3.7)
 
 
 
@@ -191,9 +192,11 @@ hello: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, 
 
 - 決定要編譯哪一個文件
 
+- make命令所執行的動作依賴於Makefile文件
+
 <h2 id="3.2">3-2_Makefile的引入與規則</h2>
 
-**Makefile的引入**
+### Makefile的引入
 
 - 我們知道.c程序 ==》 得到可執行程序它們之間要經過四個步驟：
     1. 預處理
@@ -208,7 +211,7 @@ hello: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, 
     2）對於**b.c**：執行：預處理 編譯 彙編 的過程，**b.c ==>yyy.s ==>yyy.o** 文件。
     3）最後：**xxx.o**和**yyy.o**鏈接在一起得到一個**test**應用程序。
 
-    提示：**gcc -o test a.c b.c -v** ：加上一個**‘-v’**選項可以看到它們的處理過程，
+    提示：**gcc -o test a.c b.c -v** ：加上一個 `-v` 選項可以看到它們的處理過程，
 
 - 第一次編譯 a.c 得到 xxx.o 文件，這是很合乎情理的， 執行完第一次之後，如果修改 a.c 又再次執行：`gcc -o test a.c b.c`，對於 a.c 應該重新生成 xxx.o，但是對於 b.c 又會重新編譯一次，這完全沒有必要，b.c 根本沒有修改，直接使用第一次生成的 yyy.o 文件就可以了。
 
@@ -233,31 +236,74 @@ hello: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, 
   - 比較 a.o 和 a.c 的時間，如果a.c的時間比 a.o 的時間更加新的話，就表明 a.c 被修改了，同理b.o和b.c也會進行同樣的比較。
   - 比較test和 a.o,b.o 的時間，如果a.o或者b.o的時間比test更加新的話，就表明應該重新生成test。
 
-**Makefile的規則**
+### Makefile的規則
 
-- makefie最基本的語法是規則，規則：
+makefie最基本的語法是規則，規則：
 
-    ```bash
-    目標 : 依賴1 依賴2 ...
-    [TAB]命令
-    ```
+```bash
+目標(target) : 依賴1 依賴2 (prerequires)...
+<TAB>命令(command)
+```
 
-- 當**依賴**比**目標**新，執行它們下面的命令。我們要把上面三個命令寫成makefile規則，如下：
+- 目標(target)通常是要生成的文件的名稱，可以是可執行文件或OBJ文件，也可以是一個執行的動作名稱，諸如 `clean`。
 
-    ```bash
-    test ：a.o b.o  //test是目標，它依賴於a.o b.o文件，一旦a.o或者b.o比test新的時候，，就需要執行下面的命令，重新生成test可執行程序。
-    gcc -o test a.o b.o
+- 依賴是用來產生目標的材料(比如源文件)，一個目標經常有幾個依賴。
 
-    a.o : a.c  //a.o依賴於a.c，當a.c更加新的話，執行下面的命令來生成a.o
-    gcc -c -o a.o a.c
+- 命令是生成目標時執行的動作，一個規則可以含有幾個命令，每個命令佔一行。每個命令行前面必須是一個Tab字符，即命令行第一個字符是Tab
 
-    b.o : b.c  //b.o依賴於b.c,當b.c更加新的話，執行下面的命令，來生成b.o
-    gcc -c -o b.o b.c
-    ```
+當**依賴**比**目標**新，執行它們下面的命令。我們要把上面三個命令寫成makefile規則，如下：
 
-- 範例: [001_test_app](./%5B%E7%AC%AC4%E7%AF%87%5D_%E5%B5%8C%E5%85%A5%E5%BC%8FLinux%E6%87%89%E7%94%A8%E9%96%8B%E7%99%BC%E5%9F%BA%E7%A4%8E%E7%9F%A5%E8%AD%98/source/04_2018_Makefile/001_test_app/)
+```bash
+test ：a.o b.o  //test是目標，它依賴於a.o b.o文件，一旦a.o或者b.o比test新的時候，，就需要執行下面的命令，重新生成test可執行程序。
+gcc -o test a.o b.o
+
+a.o : a.c  //a.o依賴於a.c，當a.c更加新的話，執行下面的命令來生成a.o
+gcc -c -o a.o a.c
+
+b.o : b.c  //b.o依賴於b.c,當b.c更加新的話，執行下面的命令，來生成b.o
+gcc -c -o b.o b.c
+```
+
+範例: [001_test_app](./%5B%E7%AC%AC4%E7%AF%87%5D_%E5%B5%8C%E5%85%A5%E5%BC%8FLinux%E6%87%89%E7%94%A8%E9%96%8B%E7%99%BC%E5%9F%BA%E7%A4%8E%E7%9F%A5%E8%AD%98/source/04_2018_Makefile/001_test_app/)
+
+編寫Makefile文件時，要使用Tab來作縮排，不可以使用空格
+
+執行make命令時如果不指定目標，那麼它默認是去生成第1個目標。所以 `第1個目標`，位置很重要。有時候不太方便把第1個目標完整地放在文件前面，這時可以在文件的前面直接放置目標，在後面再完善它的依賴與命令。
+
+比如：
+
+```bash
+First_target:         // 這句話放在前面
+
+．．．．// 其他代碼，比如include其他文件得到後面的xxx變量
+
+First_target : $(xxx) $(yyy)   // 在文件的後面再來完善
+    command
+```
 
 <h2 id="3.3">3-3_Makefile的語法</h2>
+
+### make命令的使用
+
+- 執行make命令時，它會去當前目錄下查找名為 `Makefile` 的文件，並根據它的指示去執行操作，生成第一個目標。
+
+- 我們可以使用 `-f` 選項指定文件，不再使用名為 `Makefile` 的文件，比如：
+
+    ```bash
+    make  -f  Makefile.build 
+    ```
+
+- 我們可以使用 `-C` 選項指定目錄，切換到其他目錄裡去，比如：
+
+    ```bash
+    make -C  a/  -f  Makefile.build 
+    ```
+
+- 我們可以指定目標，不再默認生成第一個目標：
+
+    ```bash
+    make -C  a/  -f  Makefile.build  other_target
+    ```
 
 ### Patten - 通配符
 
@@ -398,25 +444,124 @@ B = abc 123
 D = weidongshan
 ```
 
+### 變量的導出(export)
+
+在編譯程序時，我們會不斷地使用 `make -C dir` 切換到其他目錄，執行其他目錄裡的Makefile。如果想讓某個變量的值在所有目錄中都可見，要把它 `export` 出來。
+
+比如 `CC = $(CROSS_COMPILE)gcc`，這個CC變量表示編譯器，在整個過程中都是一樣的。定義它之後，要使用 `export CC` 把它導出來。
+
+### Makefile中可以使用shell命令
+
+比如：
+
+```Makefile
+TOPDIR := $(shell pwd)
+```
+
+這是個立即變量，TOPDIR等於shell命令pwd的結果。
+
 <h2 id="3.4">3-4_Makefile函數</h2>
 
 - makefile裡面可以包含很多函數，這些函數都是make本身實現的，下面我們來幾個常用的函數。
 
 - 引用一個函數用`$`。
 
-### 函數foreach
+- 函數調用的格式如下： `$(function arguments)`
+  - 這裡 `function` 是函數名，`arguments` 是該函數的參數。
+  - 參數和函數名之間是用空格或Tab隔開，如果有多個參數，它們之間用逗號隔開。
+  - 這些空格和逗號不是參數值的一部分。
+
+### 字符串替換和分析函數
+
+#### 函數subst
+
+```Makefile
+$(subst from, to, text) 
+```
+
+在文本 `text` 中使用 `to` 替換每一處 `from`。
+
+比如：
+
+```Makefile
+$(subst ee, EE, feet on the street)
+```
+
+結果為 `fEEt on the street`
+
+#### 函數patsubst
+
+函數 patsubst 語法如下：
+
+```Makefile
+$(patsubst pattern, replacement, $(var))
+```
+
+patsubst 函數是從 var 變量裡面取出每一個值，如果這個符合 pattern 格式，把它替換成 replacement 格式，
+
+實例：
+
+```Makefile
+files2  = a.c b.c c.c d.c e.c abc
+
+dep_files = $(patsubst %.c,%.d,$(files2))
+
+all:
+    @echo dep_files = $(dep_files)
+```
+
+結果：
+
+```bash
+dep_files = a.d b.d c.d d.d e.d abc
+```
+
+#### 函數strip
+
+```Makefile
+$(strip string)
+```
+
+去掉前導和結尾空格，並將中間的多個空格壓縮為單個空格。
+
+比如：
+
+```Makefile
+$(strip a   b c )
+```
+
+結果為 `a b c`
+
+#### 函數findstring
+
+```Makefile
+$(findstring find, in)
+```
+
+在字符串 `in` 中搜尋 `find`，如果找到，則返回值是 `find`，否則返回值為空。
+
+比如：
+
+```Makefile
+$(findstring a, a b c)
+$(findstring a, b c)
+```
+
+將分別產生值 `a` 和 `(空字符串)`
+
+#### 函數foreach
 
 函数foreach语法如下： 對於list中的每一個var，執行text的公式
 
-```bash
-$(foreach var,list,text) 
+```Makefile
+$(foreach var, list, text) 
 ```
 
 前兩個參數，`var` 和 `list`，將首先擴展，注意最後一個參數 `text` 此時不擴展；接著，對每一個 list 擴展產生的字，將用來為 var擴展後命名的變量賦值；然後 `text` 引用該變量擴展；因此它每次擴展都不相同。結果是由空格隔開的 `text`。在 `list` 中多次擴展的字組成的新的 `list`。 `text` 多次擴展的字串聯起來，字與字之間由空格隔開，如此就產生了函數 `foreach` 的返回值。
 
 實際例子：
 
-```bash
+```Makefile
 A = a b c
 B = $(foreach f, &(A), $(f).o)
 
@@ -434,14 +579,14 @@ B = a.o b.o c.o
 
 函數filter/filter-out語法如下：
 
-```bash
+```Makefile
 $(filter pattern...,text)     # 在text中取出符合patten格式的值
 $(filter-out pattern...,text) # 在text中取出不符合patten格式的值
 ```
 
 實例：
 
-```bash
+```Makefile
 C = a b c d/
 
 D = $(filter %/, $(C))
@@ -459,22 +604,132 @@ D = d/
 E = a b c
 ```
 
-### Wildcard
+#### 函數sort
+
+```Makefile
+$(sort list)
+```
+
+將 `list` 中的字按字母順序排序，並去掉重複的字。輸出由單個空格隔開的字的列表。
+
+比如：
+
+```Makefile
+$(sort foo bar lose)
+```
+
+返回值是 `bar foo lose`
+
+### 文件名函数
+
+#### 函數dir
+
+```Makefile
+$(dir names...)
+```
+
+抽取 `names...` 中每一個文件名的路徑部分，文件名的路徑部分包括從文件名的首字符到最後一個斜杠(含斜杠)之前的一切字符。
+
+比如：
+
+```Makefile
+$(dir src/foo.c hacks)
+```
+
+結果為 `src/ ./`
+
+#### 函數notdir
+
+```Makefile
+$(notdir names...)
+```
+
+抽取 `names...` 中每一個文件名中除路徑部分外一切字符（真正的文件名）。
+
+比如：
+
+```Makefile
+$(notdir src/foo.c hacks)
+```
+
+結果為 `foo.c hacks`
+
+#### 函數suffix
+
+```Makefile
+$(suffix names...)
+```
+
+抽取 `names...` 中每一個文件名的後綴。
+
+比如：
+
+```Makefile
+$(suffix src/foo.c src-1.0/bar.c hacks)
+```
+
+結果為 `.c .c`
+
+#### 函數basename
+
+```Makefile
+$(basename names...)
+```
+
+抽取 `names...` 中每一个文件名中除后缀外一切字符。
+
+比如：
+
+```Makefile
+$(basename src/foo.c src-1.0/bar hacks)
+```
+
+結果為 `src/foo src-1.0/bar hacks`
+
+#### 函數addsuffix
+
+參數 `names...` 是一系列的文件名，文件名之間用空格隔開；`suffix` 是一個後綴名。將 `suffix(後綴)` 的值附加在每一個獨立文件名的後面，完成後將文件名串聯起來，它們之間用單個空格隔開。
+
+比如：
+
+```Makefile
+$(addsuffix .c, foo bar)
+```
+
+結果為 `foo.c bar.c`
+
+#### 函數addprefix
+
+```Makefile
+$(addprefix prefix,names...)
+```
+
+參數 `names` 是一系列的文件名，文件名之間用空格隔開；`prefix` 是一個前綴名。將 `preffix(前綴)` 的值附加在每一個獨立文件名的前面，完成後將文件名串聯起來，它們之間用單個空格隔開。
+
+比如：
+
+```Makefile
+$(addprefix src/,foo bar)
+```
+
+結果為 `src/foo src/bar`
+
+#### Wildcard
 
 函數Wildcard語法如下：
 
-```bash
+```Makefile
 # pattern定義了文件名的格式, wildcard取出其中存在的文件。
 $(wildcard pattern)
 ```
 
-這個函數 wildcard 會以 pattern 這個格式，去尋找存在的文件，返回存在文件的名字。
+這個函數 wildcard 會以 pattern 這個格式，去尋找存在的文件，**返回存在文件的名字**。
 
 實例：
 
 在該目錄下創建三個文件：a.c b.c c.c
 
-```bash
+```Makefile
 files = $(wildcard *.c)
 
 all:
@@ -491,7 +746,7 @@ files = a.c b.c c.c
 
 實例：
 
-```bash
+```Makefile
 files2 = a.c b.c c.c d.c e.c  abc
 files3 = $(wildcard $(files2))
 
@@ -505,32 +760,53 @@ all:
 files3 = a.c b.c c.c
 ```
 
-### patsubst
+### 其他函數
 
-函數 patsubst 語法如下：
+#### 函數if
 
-```bash
-$(patsubst pattern,replacement,\$(var))
+```Makefile
+$(if condition, then-part [,else-part])
 ```
 
-patsubst 函數是從 var 變量裡面取出每一個值，如果這個符合 pattern 格式，把它替換成 replacement 格式，
+首先把第一個參數 `condition` 的前導空格、結尾空格去掉，然後擴展。如果擴展為非空字符串，則條件 `condition` 為 `真`；如果擴展為空字符串，則條件`condition` 為 `假`。
 
-實例：
+如果條件 `condition` 為 `真`, 那麼計算第二個參數 `then-part` 的值，並將該值作為整個函數if的值。
 
-```bash
+如果條件 `condition` 為 `假`, 並且第三個參數存在，則計算第三個參數  `else-part` 的值，並將該值作為整個函數if的值；如果第三個參數不存在，函數if將什麼也不計算，返回空值。
 
-files2  = a.c b.c c.c d.c e.c abc
+#### 函數origin
 
-dep_files = $(patsubst %.c,%.d,$(files2))
-
-all:
-    @echo dep_files = $(dep_files)
+```Makefile
+$(origin variable)
 ```
 
-結果：
+變量 `variable` 是一個查詢變量的名稱，不是對該變量的引用。所以，不能採用 `$` 和 `圓括號` 的格式書寫該變量，當然，如果需要使用非常量的文件名，可以在文件名中使用變量引用。
 
-```bash
-dep_files = a.d b.d c.d d.d e.d abc
+函數origin的結果是一個字符串，該字符串變量是這樣定義的：
+
+```
+‘undefined'		：如果變量‘variable’從沒有定義；
+‘default'		：變量‘variable’是缺省定義；
+‘environment'		：變量‘variable’作為環境變量定義，選項‘-e’沒有打開；
+‘environment override'	：變量‘variable’作為環境變量定義，選項‘-e’已打開；
+‘file' 			：變量‘variable’在Makefile中定義；
+‘command line' 		：變量‘variable’在命令行中定義；
+‘override' 		：變量‘variable’在Makefile中用override指令定義；
+‘automatic' 		：變量‘variable’是自動變量
+```
+
+#### 函數shell
+
+```Makefile
+$(shell command arguments)
+```
+
+函數shell是make與外部環境的通訊工具。函數shell的執行結果和在控制台上執行`command arguments` 的結果相似。不過如果 `command arguments` 的結果含有換行符（和回車符），則在函數shell的返回結果中將把它們處理為單個空格，若返回結果最後是換行符（和回車符）則被去掉。
+
+比如當前目錄下有文件1.c、2.c、1.h、2.h，則：
+
+```Makefile
+c_src := $(shell ls *.c)
 ```
 
 <h2 id="3.5">3-5_Makefile實例</h2>
@@ -738,16 +1014,55 @@ main.o : main.c defs.h
 
 <h2 id="3.6">3-6_通用Makefile的使用</h2>
 
+<h3 id="3.6.0">通用Makefile的設計思想：</h3>
+
+**在Makefile文件中確定要編譯的文件、目錄，比如：**
+
+```Makefile
+obj-y += main.o
+obj-y += a/
+```
+
+`Makefile` 文件總是被 `Makefile.build` 包含的。
+
+**在Makefile.build中設置編譯規則，有3條編譯規則：**
+
+1. 怎麼編譯子目錄？進入子目錄編譯：
+
+    ```Makefile
+    $(subdir-y):
+        make -C $@ -f $(TOPDIR)/Makefile.build
+    ```
+
+2. 怎麼編譯當前目錄中的文件?
+
+    ```Makefile
+    %.o : %.c
+        $(CC) $(CFLAGS) $(EXTRA_CFLAGS) $(CFLAGS_$@) -Wp,-MD,$(dep_file) -c -o $@ $<
+    ```
+
+3. 當前目錄下的.o和子目錄下的built-in.o要打包起來：
+
+    ```Makefile
+    built-in.o : $(cur_objs) $(subdir_objs)
+        $(LD) -r -o $@ $^
+    ```
+
+**頂層Makefile中把頂層目錄的built-in.o鏈接成APP：**
+
+```Makefile
+$(TARGET) : built-in.o
+    $(CC) $(LDFLAGS) -o $(TARGET) built-in.o
+```
+
+---
+
 參考Linux內核的Makefile編寫一個通用的Makefile，它可以用來編譯應用程序：
 
 1. 支持多個目錄、多層目錄、多個文件
 2. 支持給所有文件設置編譯選項
 3. 支持給某個目錄設置編譯選項
 4. 支持給某個文件單獨設置編譯選項
-
-$(shell pwd) : Makefile的當前目錄
-
-EXTRA_CFLAGS := -D <MircoName> ： 代表定義Makefile目錄下某個 .c或.h 使用到的宏
 
 本程序的Makefile分為3類:
 1. 頂層目錄的Makefile
@@ -777,6 +1092,8 @@ obj-y += subdir/
 1. "subdir/"中的斜杠"/"不可省略
 2. 頂層Makefile中的CFLAGS在編譯任意一個.c文件時都會使用
 3. `CFLAGS`  `EXTRA_CFLAGS`  `CFLAGS_xxx.o` 三者組成xxx.c的編譯選項
+
+EXTRA_CFLAGS := -D \<MircoName\> ： 代表定義Makefile目錄下某個 .c或.h 使用到的宏
 
 <h3 id="3.6.2">二、頂層目錄的Makefile：</h3>
 
@@ -823,4 +1140,14 @@ obj-y += subdir/
 
 <h2 id="3.7">3-7_通用Makefile的解析</h2>
 
-[01.嵌入式Linux應用開發基礎知識.docx](./%5B%E7%AC%AC4%E7%AF%87%5D_%E5%B5%8C%E5%85%A5%E5%BC%8FLinux%E6%87%89%E7%94%A8%E9%96%8B%E7%99%BC%E5%9F%BA%E7%A4%8E%E7%9F%A5%E8%AD%98/doc/01.%E5%B5%8C%E5%85%A5%E5%BC%8FLinux%E6%87%89%E7%94%A8%E9%96%8B%E7%99%BC%E5%9F%BA%E7%A4%8E%E7%9F%A5%E8%AD%98.docx])
+built-in.o：每個Makefile的目錄下都會把.o編譯成一個build-in.o，最後頂層目錄的Makefile會把當前目錄的.o與全部子目錄的build-in.o再編譯成一個build-in.o，用來代表所有的.o文件
+
+![img11](./[第4篇]_嵌入式Linux應用開發基礎知識/img11.PNG)
+
+Makefile搭配Makefile.build編譯程式之流程分析
+
+![img12](./[第4篇]_嵌入式Linux應用開發基礎知識/img12.PNG)
+
+
+
+
