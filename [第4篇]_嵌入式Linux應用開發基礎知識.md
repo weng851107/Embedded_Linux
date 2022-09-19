@@ -20,6 +20,9 @@
     - [三、頂層目錄的Makefile.build](#3.6.3)
     - [四、怎麼使用這套Makefile](#3.6.4)
   - [3-7_通用Makefile的解析](#3.7)
+- [04_文件IO](#4)
+  - [4-1_文件IO_讀寫文件](#4.1)
+  - [4-2_文件IO_內核接口](#4.2)
 
 
 
@@ -1376,6 +1379,76 @@ Makefile搭配Makefile.build編譯程式之流程分析
 
 ![img12](./[第4篇]_嵌入式Linux應用開發基礎知識/img12.PNG)
 
+<h1 id="4">04_文件IO</h1>
 
+在Linux系統中，一切都是 `文件`：普通文件、驅動程序、網絡通信等等。所有的操作，都是通過 `文件IO` 來操作的。所以，很有必要掌握文件操作的常用接口。
 
+應用程序透過接口來訪問普通文件或硬件
 
+![img15](./[第4篇]_嵌入式Linux應用開發基礎知識/img15.PNG)
+
+文件從哪裡來?
+
+- 真實硬件文件
+- 內核虛擬文件
+- 特殊文件(字符設備、塊設備與網路設備)
+
+![img14](./[第4篇]_嵌入式Linux應用開發基礎知識/img14.PNG)
+
+主設備號代表驅動，次設備號代表設備
+
+![img16](./[第4篇]_嵌入式Linux應用開發基礎知識/img16.PNG)
+
+如何知道這些函數的用法?
+
+- `help` 只能用於查看某個命令的用法
+- `man手冊` 既可以查看命令的用法，還可以查看函數的詳細介紹等等。它含有9大分類，如下：
+
+    ```
+    1   Executable programs or shell commands                       // 命令
+    2   System calls (functions provided by the kernel)             // 系统调用，比如 man 2 open
+    3   Library calls (functions within program libraries)          // 函数库调用
+    4   Special files (usually found in /dev)                       // 特殊文件, 比如 man 4 tty 
+    5   File formats and conventions eg /etc/passwd                 // 文件格式和约定, 比如man 5 passwd
+    6   Games                                                       // 游戏
+    7   Miscellaneous (including macro packages and conventions), e.g. man(7), groff(7) //杂项
+    8   System administration commands (usually only for root)      // 系统管理命令
+    9   Kernel routines [Non standard]                              // 内核例程
+    ```
+
+<h2 id="4.1">4-1_文件IO_讀寫文件</h2>
+
+標準Read/Write IO讀寫文件
+
+[copy.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/06_fileio/copy.c)
+
+透過系統調用mmap映射來讀寫文件
+
+[copy_mmap.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/06_fileio/copy_mmap.c)
+
+Note: 可以使用 `man 2 open` 來查看open的使用方式
+
+<h2 id="4.2">4-2_文件IO_內核接口</h2>
+
+應用程序透過系統調用接口來調用內核
+
+![img17](./[第4篇]_嵌入式Linux應用開發基礎知識/img17.PNG)
+
+APP透過系統調用函數執行swi, svc指令，來觸發CPU異常，進而導致CPU跳到某地址執行某函數，如此達成調用內核函數
+
+![img18](./[第4篇]_嵌入式Linux應用開發基礎知識/img18.PNG)
+
+系統調用函數怎麼進入內核?
+
+- swi指令(ABI, Application Binary Interface)
+- svc指令(ARM64)
+
+![img19](./[第4篇]_嵌入式Linux應用開發基礎知識/img19.PNG)
+
+內核的`sys_open`、`sys_read`會做什麼?
+
+- 首先要分辨文件類型
+- 普通文件會以FAT32/EXT4/...保存在塊設備上
+- 字符設備
+
+![img20](./[第4篇]_嵌入式Linux應用開發基礎知識/img20.PNG)
