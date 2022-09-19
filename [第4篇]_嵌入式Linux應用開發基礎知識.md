@@ -130,58 +130,285 @@ hello: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, 
     book@100ask:~$ make ARCH=arm CROSS_COMPILE=arm-buildroot-linux-gnueabihf-
     ```
 
+---
+
+![img13](./[第4篇]_嵌入式Linux應用開發基礎知識/img13.PNG)
+
+怎麼確定交叉編譯器中標頭檔的預設路徑?
+
+- 進入交叉編譯器的目錄裡，執行：`find . -name "stdio.h"`，它位於一個 `include` 目錄下的根目錄裡。
+
+怎麼自己指定標頭檔目錄?
+
+- 編譯時，加上 `-I <標頭檔目錄>` 這樣的選項。
+
+怎麼確定交叉編譯器中庫檔的預設路徑?
+
+- 進入交叉編譯器的目錄裡，執行：`find . -name lib`，可以得到xxxx/lib、xxxx/usr/lib，一般來說這2個目錄就是要找的路徑。
+- 如果有很多類似的lib，進去看看，有很多so檔的目錄一般就是要找的路徑。
+
+怎麼自己指定庫檔目錄、指定要用的庫檔?
+
+- 編譯時，加上 `-L <庫檔目錄>` 這樣的選項，用來指定庫目錄
+- 編譯時，加上 `-labc` 這樣的選項，用來指定庫檔libabc.so。
+
 <h1 id="2">02_GCC</h1>
 
 <h2 id="2.1">2-1_GCC編譯過程</h2>
 
-- 機器只能讀取機器碼(即二進制的程式，非0即1)
+機器只能讀取機器碼(即二進制的程式，非0即1)
 
-- 程式的成長流程
+程式的成長流程
 
-    ![img01](./[第4篇]_嵌入式Linux應用開發基礎知識/img01.PNG)
+![img01](./[第4篇]_嵌入式Linux應用開發基礎知識/img01.PNG)
 
-- `gcc -o hello hello.c` 所完成的動作
-  - 可透過加`-v`來查看流程跑了什麼，`gcc -o hello hello.c -v`
+`gcc -o hello hello.c` 所完成的動作
+
+- 可透過加`-v`來查看流程跑了什麼，`gcc -o hello hello.c -v`
 
     ![img02](./[第4篇]_嵌入式Linux應用開發基礎知識/img02.PNG)
 
-- GCC編譯過程
+GCC編譯過程
 
-    ![img03](./[第4篇]_嵌入式Linux應用開發基礎知識/img03.PNG)
+![img03](./[第4篇]_嵌入式Linux應用開發基礎知識/img03.PNG)
 
-- 日常說法會把 `編譯` 代表成 `預處理 -> 編譯 -> 匯編`，接著再鏈結
+日常說法會把 `編譯` 代表成 `預處理 -> 編譯 -> 匯編`，接著再鏈結
+
+1. 預處理
+
+    C/C++原始檔案中，以 `#` 開頭的命令被稱為預處理命令，如包含命令`#include`、巨集定義命令`#define`、條件編譯命令`#if`、`#ifdef`等。預處理就是將要包含(include)的檔插入原文件中、將巨集定義展開、根據條件編譯命令選擇要使用的代碼，最後將這些東西輸出到一個`.i`檔中等待進一步處理。
+
+2. 編譯
+
+    編譯就是把C/C++代碼(比如上述的`.i`文件)翻譯成彙編代碼，所用到的工具為cc1(它的名字就是cc1，x86有自己的cc1命令，ARM板也有自己的cc1命令)。
+
+3. 彙編
+
+    彙編就是將第二步輸出的彙編代碼翻譯成符合一定格式的機器代碼，在Linux系統上一般表現為ELF目的檔案(OBJ檔)，用到的工具為as。x86有自己的as命令，ARM版也有自己的as命令，也可能是xxxx-as（比如arm-linux-as）。
+
+4. 連結
+
+    連結就是將上步生成的OBJ檔和系統庫的OBJ檔、庫檔連結起來，最終生成了可以在特定平臺運行的可執行檔，用到的工具為ld或collect2。
 
 <h2 id="2.2">2-2_GCC常用選項</h2>
 
-- multi-files 進行編譯：各自匯編成.o檔後，鏈結成一個執行檔
+multi-files 進行編譯：各自匯編成.o檔後，鏈結成一個執行檔
 
-    ```Shell
-    gcc -o test main.c sub.c
+```Shell
+gcc -o test main.c sub.c
+```
+
+![img04](./[第4篇]_嵌入式Linux應用開發基礎知識/img04.PNG)
+
+當今天有999個文件時，使用這種方式，只要修改一個檔案後，每次重新編譯都會重新編譯999個文件，因此會太消耗資源，所以要先編譯在鏈結，就可以避免掉沒有修改的程式要再重新編譯，較為高效
+
+![img05](./[第4篇]_嵌入式Linux應用開發基礎知識/img05.PNG)
+
+**GCC常用選項**
+
+![img06](./[第4篇]_嵌入式Linux應用開發基礎知識/img06.PNG)
+
+1. `-c`
+
+    預處理、編譯和彙編原始檔案，但是不作連結，編譯器根據原始檔案生成OBJ檔。缺省情況下，GCC通過用`.o替換原始檔案名的尾碼.c，.i，.s`等，產生OBJ檔案名。可以使用-o選項選擇其他名字。GCC忽略-c選項後面任何無法識別的輸入檔。
+
+2. `-S`
+
+    編譯後即停止，不進行彙編。對於每個輸入的非組合語言檔，輸出結果是組合語言檔。缺省情況下，GCC通過用`.s替換原始檔案名尾碼.c, .i`等等，產生彙編檔案名。可以使用-o選項選擇其他名字。GCC忽略任何不需要彙編的輸入檔。
+
+3. `-E`
+
+    預處理後即停止，不進行編譯。預處理後的代碼送往標準輸出。
+
+4. `-o file`
+
+    指定輸出檔為file。無論是預處理、編譯、彙編還是連結，這個選項都可以使用。如果沒有使用`-o`選項，預設的輸出結果是：可執行檔為`a.out`；修改輸入檔的名稱是`source.suffix`，則它的OBJ文件是`source.o`，彙編文件是 `source.s`，而預處理後的C原始程式碼送往標準輸出。
+
+5. `-v`
+
+    顯示製作GCC工具自身時的配置命令；同時顯示編譯器驅動程式、前置處理器、編譯器的版本號。
+
+**警告選項(Warning Option)：**
+
+`-Wall`
+
+這個選項基本打開了所有需要注意的警告資訊，比如沒有指定類型的聲明、在聲明之前就使用的函數、區域變數除了聲明就沒再使用等。
+
+```bash
+gcc -Wall -c main.c
+```
+
+**調試選項(Debugging Option)：**
+
+`-g` 選項加入只有GDB才使用的額外調試資訊。
+
+**優化選項(Optimization Option)：**
+
+1. `-O或-O1`
+
+    不使用`-O`或`-O1`選項時，只有聲明了register的變數才分配使用寄存器。
+    使用了`-O`或`-O1`選項，編譯器會試圖減少目的碼的大小和執行時間。
+
+2. `-O2`
+
+    多優化一些。除了涉及空間和速度交換的優化選項，執行幾乎所有的優化工作。
+
+3. `-O3`
+
+    優化的更多。除了打開-O2所做的一切，它還打開了`-finline-functions`選項。
+
+4. `-O0`
+
+    不優化。
+
+**連結器選項(Linker Option)：**
+
+下面的選項用於連結OBJ檔，輸出可執行檔或庫檔。
+
+1. `-nostartfiles`
+
+    不連結系統標準開機檔案，而標準庫檔仍然正常使用：
+
+    ```bash
+    $ gcc -v -nostartfiles -o test main.o sub.o
+
+    /usr/lib/gcc-lib/i386-redhat-linux/3.2.2/collect2 --eh-frame-hdr -m elf_i386 -dynamic-linker 
+    /lib/ld-linux.so.2 
+    -o test 
+    -L/usr/lib/gcc-lib/i386-redhat-linux/3.2.2 
+    -L/usr/lib/gcc-lib/i386-redhat-linux/3.2.2/../../.. 
+    main.o 
+    sub.o 
+    -lgcc -lgcc_eh -lc -lgcc -lgcc_eh
+    /usr/bin/ld: warning: cannot find entry symbol _start; defaulting to 08048184
     ```
 
-    ![img04](./[第4篇]_嵌入式Linux應用開發基礎知識/img04.PNG)
+    對於一般應用程式，這些開機檔案是必需的，這裡僅是作為例子(這樣編譯出來的test檔無法執行)。在編譯**bootloader**、**內核**時，將用到這個選項。
 
-- 當今天有999個文件時，使用這種方式，只要修改一個檔案後，每次重新編譯都會重新編譯999個文件，因此會太消耗資源，所以要先編譯在鏈結，就可以避免掉沒有修改的程式要再重新編譯，較為高效
+2. `-nostdlib`
 
-    ![img05](./[第4篇]_嵌入式Linux應用開發基礎知識/img05.PNG)
+    不連結系統標準開機檔案和標準庫檔，只把指定的檔傳遞給連結器。這個選項常用於**編譯內核、bootloader**等程式，它們不需要開機
 
-- GCC常用選項
+    ```bash
+    $ gcc -v -nostdlib -o test main.o sub.o
 
-    ![img06](./[第4篇]_嵌入式Linux應用開發基礎知識/img06.PNG)
+    /usr/lib/gcc-lib/i386-redhat-linux/3.2.2/collect2 --eh-frame-hdr -m elf_i386 -dynamic-linker /lib/ld-linux.so.2 
+    -o test 
+    -L/usr/lib/gcc-lib/i386-redhat-linux/3.2.2 
+    -L/usr/lib/gcc-lib/i386-redhat-linux/3.2.2/../../.. 
+    main.o 
+    sub.o
+    /usr/bin/ld: warning: cannot find entry symbol _start; defaulting to 08048074
+    main.o(.text+0x19): In function `main':
+    : undefined reference to `printf'
+    sub.o(.text+0xf): In function `sub_fun':
+    : undefined reference to `printf'
+    collect2: ld returned 1 exit status
+    ```
 
-- 靜態庫：
+    出現了一大堆錯誤，因為printf等函數是在庫檔中實現的。
 
-    ![img07](./[第4篇]_嵌入式Linux應用開發基礎知識/img07.PNG)
+3. `-static`
 
-- 動態庫：
+    在支援動態連結(dynamic linking)的系統上，阻止連結共用庫。
 
-    ![img08](./[第4篇]_嵌入式Linux應用開發基礎知識/img08.PNG)
+    仍以options程式為例，是否使用-static選項編譯出來的可執行程式大小相差巨大：
 
-- 總結
+    ```bash
+    $ gcc -c -o main.c
+    $ gcc -c -o sub.c
+    $ gcc -o test main.o sub.o
+    $ gcc -o test_static main.o sub.o –static
+    $ ls -l test test_static
+    -rwxr-xr-x 1 book book   6591 Jan 16 23:51 test
+    -rwxr-xr-x 1 book book 546479 Jan 16 23:51 test_static
+    ```
 
-    ![img09](./[第4篇]_嵌入式Linux應用開發基礎知識/img09.PNG)
+    其中test檔為6591位元組，test_static檔為546479位元組。當不使用-static編譯檔時，程式執行前要連結共用庫檔，所以還需要將共用庫檔放入檔案系統中。
+
+4. `-shared`
+
+    生成一個共用OBJ檔，它可以和其他OBJ檔連結產生可執行檔。只有部分系統支援該選項。
+
+    當不想以原始程式碼發佈程式時，可以使用-shared選項生成庫檔，比如對於options程式，可以如下製作庫檔：
+
+    ```bash
+    $ gcc -c -o sub.o sub.c
+    $ gcc -shared -o libsub.so sub.o
+    ```
+
+    以後要使用sub.c中的函數sub_fun時，在連結程式時，指定引腳libsub.so即可，比如：
+
+    ```bash
+    $ gcc -o test main.o  -lsub  -L /libsub.so/所在的目錄/
+    ```
+
+    可以將多個檔製作為一個庫檔，比如：
+
+    ```bash
+    gcc -shared  -o libsub.so  sub.o  sub2.o  sub3.o
+    ```
+
+**目錄選項(Directory Option)：**
+
+下列選項指定搜索路徑，用於查找標頭檔，庫檔，或編譯器的某些成員。
+
+1. `-Idir`
+
+    在標頭檔的搜索路徑清單中添加dir 目錄。
+
+    如果以 `#include < >` 包含檔，則只在標準庫目錄開始搜索(包括使用-Idir選項定義的目錄)
+
+    如果以 `#include " "` 包含檔，則先從使用者的工作目錄開始搜索，再搜索標準庫目錄
+
+2. `-Ldir`
+
+    在 `-l` 選項的搜索路徑清單中添加dir目錄。
+
+    仍使用options程式進行說明，先製作庫檔libsub.a：
+
+    ```bash
+    $ gcc -c -o sub.o sub.c
+    $ gcc -shared -o libsub.a sub.o
+    ```
+
+    編譯main.c：
+
+    ```bash
+    $ gcc  -c -o  main.o  main.c
+    ```
+
+    連結程式，下面的指令將出錯，提示找不到庫檔：
+
+    ```bash
+    $ gcc  -o  test  main.o  -lsub
+    /usr/bin/ld: cannot find -lsub
+    collect2: ld returned 1 exit status
+    ```
+
+    可以使用-Ldir選項將目前的目錄加入搜索路徑，如下則連結成功：
+
+    ```bash
+    $ gcc -L. -o test main.o -lsub
+    ```
+
+**ld/objdump/objcopy選項：**
+
+我們在開發APP時，一般不需要直接調用這3個命令；在開發裸機、bootloader時，或是調試APP時會涉及，到時再講。
+
+**靜態庫：**
+
+![img07](./[第4篇]_嵌入式Linux應用開發基礎知識/img07.PNG)
+
+**動態庫：**
+
+![img08](./[第4篇]_嵌入式Linux應用開發基礎知識/img08.PNG)
+
+總結
+
+![img09](./[第4篇]_嵌入式Linux應用開發基礎知識/img09.PNG)
  
-    ![img10](./[第4篇]_嵌入式Linux應用開發基礎知識/img10.PNG)
+![img10](./[第4篇]_嵌入式Linux應用開發基礎知識/img10.PNG)
 
 <h1 id="3">03_Makefile</h1>
 
