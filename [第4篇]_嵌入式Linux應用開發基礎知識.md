@@ -23,7 +23,15 @@
 - [04_文件IO](#4)
   - [4-1_文件IO_讀寫文件](#4.1)
   - [4-2_文件IO_內核接口](#4.2)
-
+- [05_Framebuffer](#5)
+  - [5-1_Framebuffer應用編程](#5.1)
+- [06_字符應用](#6)
+  - [6-1_字符的編碼方式](#6.1)
+  - [6-2_ASCII字符的點陣顯示](#6.2)
+  - [6-3_中文字符的點陣顯示](#6.3)
+  - [6-4_交叉編譯程序_以freetype為例](#6.4)
+  - [6-5_使用freetype顯示單個文字](#6.5)
+  - [6-6_使用freetype顯示一行文字](#6.6)
 
 
 <h1 id="0">Note</h1>
@@ -718,7 +726,7 @@ $(subst from, to, text)
 $(subst ee, EE, feet on the street)
 ```
 
-結果為 `fEEt on the street`
+結果為 `fEEt on the strEEt`
 
 #### 函數patsubst
 
@@ -735,7 +743,7 @@ patsubst 函數是從 var 變量裡面取出每一個值，如果這個符合 pa
 ```Makefile
 files2  = a.c b.c c.c d.c e.c abc
 
-dep_files = $(patsubst %.c,%.d,$(files2))
+dep_files = $(patsubst %.c, %.d, $(files2))
 
 all:
     @echo dep_files = $(dep_files)
@@ -1052,7 +1060,7 @@ c.c:
 
 void func_c()
 {
-	printf("This is C = %d\n", C);
+    printf("This is C = %d\n", C);
 }
 ```
 
@@ -1302,7 +1310,7 @@ $(TARGET) : built-in.o
 
 <h3 id="3.6.1">一、各級子目錄的Makefile：</h3>
 
-[sub-Makefile](./%5B%E7%AC%AC4%E7%AF%87%5D_%E5%B5%8C%E5%85%A5%E5%BC%8FLinux%E6%87%89%E7%94%A8%E9%96%8B%E7%99%BC%E5%9F%BA%E7%A4%8E%E7%9F%A5%E8%AD%98/source/05_general_Makefile/example/a/Makefile])
+[sub-Makefile](./%5B%E7%AC%AC4%E7%AF%87%5D_%E5%B5%8C%E5%85%A5%E5%BC%8FLinux%E6%87%89%E7%94%A8%E9%96%8B%E7%99%BC%E5%9F%BA%E7%A4%8E%E7%9F%A5%E8%AD%98/source/05_general_Makefile/example/a/Makefile)
 
 它最簡單，形式如下：
 
@@ -1328,7 +1336,7 @@ EXTRA_CFLAGS := -D \<MircoName\> ： 代表定義Makefile目錄下某個 .c或.h
 
 <h3 id="3.6.2">二、頂層目錄的Makefile：</h3>
 
-[Makefile](./%5B%E7%AC%AC4%E7%AF%87%5D_%E5%B5%8C%E5%85%A5%E5%BC%8FLinux%E6%87%89%E7%94%A8%E9%96%8B%E7%99%BC%E5%9F%BA%E7%A4%8E%E7%9F%A5%E8%AD%98/source/05_general_Makefile/example/Makefile])
+[Makefile](./%5B%E7%AC%AC4%E7%AF%87%5D_%E5%B5%8C%E5%85%A5%E5%BC%8FLinux%E6%87%89%E7%94%A8%E9%96%8B%E7%99%BC%E5%9F%BA%E7%A4%8E%E7%9F%A5%E8%AD%98/source/05_general_Makefile/example/Makefile)
 
 它除了定義obj-y來指定根目錄下要編進程序去的文件、子目錄外，
 主要是定義工具鏈前綴CROSS_COMPILE,
@@ -1338,7 +1346,7 @@ EXTRA_CFLAGS := -D \<MircoName\> ： 代表定義Makefile目錄下某個 .c或.h
 
 <h3 id="3.6.3">三、頂層目錄的Makefile.build：</h3>
 
-[Makefile.build](./%5B%E7%AC%AC4%E7%AF%87%5D_%E5%B5%8C%E5%85%A5%E5%BC%8FLinux%E6%87%89%E7%94%A8%E9%96%8B%E7%99%BC%E5%9F%BA%E7%A4%8E%E7%9F%A5%E8%AD%98/source/05_general_Makefile/example/Makefile.build])
+[Makefile.build](./%5B%E7%AC%AC4%E7%AF%87%5D_%E5%B5%8C%E5%85%A5%E5%BC%8FLinux%E6%87%89%E7%94%A8%E9%96%8B%E7%99%BC%E5%9F%BA%E7%A4%8E%E7%9F%A5%E8%AD%98/source/05_general_Makefile/example/Makefile.build)
 
 這是最複雜的部分，它的功能就是把某個目錄及它的所有子目錄中、需要編進程序去的文件都編譯出來，打包為built-in.o
 
@@ -1452,3 +1460,445 @@ APP透過系統調用函數執行swi, svc指令，來觸發CPU異常，進而導
 - 字符設備
 
 ![img20](./[第4篇]_嵌入式Linux應用開發基礎知識/img20.PNG)
+
+<h1 id="5">05_Framebuffer</h1>
+
+<h2 id="5.1">5-1_Framebuffer應用編程</h2>
+
+### LCD 簡介
+
+在Linux系統中通過Framebuffer驅動程序來控制LCD。
+
+Frame是幀的意思，buffer是緩衝的意思，這意味Framebuffer是一塊內存，裡面保存著一幀影像的每一個像素的顏色值
+
+假設LCD的解析度是1024x768，每一個像素的顏色用32未來表示，那麼Framebuffer的大小就是(1024x768x32/8=3145728字節)
+
+簡單LCD的操作原理
+1. 驅動程式設置好LCD控制器
+   - LCD控制器的時序、訊號極性
+   - LCD解析度、BPP(bits per pixel, 每個像素點用多少個bits來表示)
+2. 應用程式使用ioctl獲取LCD解析度、BPP
+3. 應用程式通過mmap映射Framebuffer，在Framebuffer中寫入數據
+
+![img21](./[第4篇]_嵌入式Linux應用開發基礎知識/img21.PNG)
+
+計算某像素點座標所對應的Framebuffer地址
+
+$$
+pixel\_address = fb\_base\_addresss + (\frac {xres*y*bpp} {8} + \frac {x*bpp} {8})
+$$
+
+像素的顏色在不同BPP格式中，用不同位數的RGB三原色來表示的
+
+![img23](./[第4篇]_嵌入式Linux應用開發基礎知識/img23.PNG)
+
+![img22](./[第4篇]_嵌入式Linux應用開發基礎知識/img22.PNG)
+
+### 代碼介紹
+
+[show_pixel.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/07_framebuffer/show_pixel.c)
+
+**打開設備**
+
+```C
+static int fd_fb;
+
+/*開啟設備*/
+fd_fb = open("/dev/fb0", O_RDWR);
+if (fd_fb < 0)
+{
+    printf("can't open /dev/fb0\n");
+    return -1;
+}
+
+/*關閉設備*/
+close(fd_fb);
+```
+
+**獲取LCD參數, 編寫應用程序時主要關心可變參數**
+
+1. 可變的參數 fb_var_screeninfo
+2. 固定的參數 fb_fix_screeninfo
+
+[fb.h](./[第4篇]_嵌入式Linux應用開發基礎知識/doc/fb.h)
+
+```C
+#include <linux/fb.h>
+```
+
+```C
+struct fb_var_screeninfo {
+    __u32 xres;                 /* visible resolution 解析度*/
+    __u32 yres;
+
+    /*........................*/
+
+    __u32 bits_per_pixel;       /* BPP*/
+    __u32 grayscale;            /* 0 = color, 1 = grayscale,*//* >1 = FOURCC*/
+    struct fb_bitfield red;     /* bitfield in fb mem if true color, */
+    struct fb_bitfield green;   /* else only length is significant */
+    struct fb_bitfield blue;    /* RGB分別用多少未來表示，從哪位開始*/
+
+    /*........................*/
+};
+```
+
+```C
+static struct fb_var_screeninfo var;	/* Current var */
+
+static int screen_size;
+static unsigned int line_width;
+static unsigned int pixel_width;
+
+if (ioctl(fd_fb, FBIOGET_VSCREENINFO, &var))
+{
+    printf("can't get var\n");
+    return -1;
+}
+line_width  = var.xres * var.bits_per_pixel / 8;
+pixel_width = var.bits_per_pixel / 8;
+screen_size = var.xres * var.yres * var.bits_per_pixel / 8;
+```
+
+**映射Framebuffer**
+
+- 要映射一塊內存，需要知道它的地址 --- 由驅動程序來設置
+- 需要知道它的大小 --- 由應用程式決定
+
+```C
+static unsigned char *fb_base;
+
+/*映射*/
+fb_base = (unsigned char *)mmap(NULL , screen_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_fb, 0);
+if (fb_base == (unsigned char *)-1)
+{
+    printf("can't mmap\n");
+    return -1;
+}
+
+/*取消映射*/
+munmap(fb_base , screen_size);
+```
+
+**描點函數**
+
+![img24](./[第4篇]_嵌入式Linux應用開發基礎知識/img24.PNG)
+
+```C
+/**********************************************************************
+ * 函數名稱： lcd_put_pixel
+ * 功能描述： 在LCD指定位置上輸出指定顏色（描點）
+ * 輸入參數： x坐標，y坐標，顏色
+ * 輸出參數： 無
+ * 返 回 值： 會
+ * 修改日期        版本號     修改人          修改內容
+ * -----------------------------------------------
+ * 2020/05/12     V1.0       zh(angenao)     創建
+ ***********************************************************************/
+void lcd_put_pixel(int x, int y, unsigned int color)
+{
+    unsigned char *pen_8 = fb_base+y*line_width+x*pixel_width;
+    unsigned short *pen_16;
+    unsigned int *pen_32;
+
+    unsigned int red, green, blue;
+
+    pen_16 = (unsigned short *)pen_8;
+    pen_32 = (unsigned int *)pen_8;
+
+    switch (var.bits_per_pixel)
+    {
+        case 8:
+        {
+            *pen_8 = color;
+            break;
+        }
+        case 16:
+        {
+            /* 565 */
+            red   = (color >> 16) & 0xff;
+            green = (color >> 8) & 0xff;
+            blue  = (color >> 0) & 0xff;
+            color = ((red >> 3) << 11) | ((green >> 2) << 5) | (blue >> 3);
+            *pen_16 = color;
+            break;
+        }
+        case 32:
+        {
+            *pen_32 = color;
+            break;
+        }
+        default:
+        {
+            printf("can't surport %dbpp\n", var.bits_per_pixel);
+            break;
+        }
+    }
+}
+
+/* 清屏: 全部设为白色 */
+memset(fb_base, 0xff, screen_size);
+
+/* 随便设置出100个为红色 */
+for (i = 0; i < 100; i++)
+    lcd_put_pixel(var.xres/2+i, var.yres/2, 0xFF0000);
+```
+
+<h1 id="6">06_字符應用</h1>
+
+<h2 id="6.1">6-1_字符的編碼方式</h2>
+
+什麼叫作編碼?
+
+- 就是一個字符用什麼數字來表示
+- 在計算機裡的一切都是用數字來表示，比如字符A用0x01或0x02或0x41來表示
+
+編碼方式
+
+1. ASCII
+
+   - American Standard Code for Information Interchange，美國標準資訊交換碼
+   - 每個字符用一個字節來表示，一個字節的7位可以表示128個數值，在ASCII碼中最高位永遠是0
+
+![img25](./[第4篇]_嵌入式Linux應用開發基礎知識/img25.PNG)
+
+2. ANSI
+
+   - ASNI是ASCII的擴展，向下包含ASCII，對於ASCII的字符仍可以一個字節來表示，對於非ASCII字符則用兩個字節來表示
+   - 第一個字節的第7位為1表示為ASNI編碼，以兩個字節來表示一個字符;反之為0則表示ASCII編碼，以一個字節表示一個字符
+   - 由Windows提出
+   - 使用ANSI編碼方式時，還需選擇要解析數值的字符集，才能正確地顯示出字符
+
+![img26](./[第4篇]_嵌入式Linux應用開發基礎知識/img26.PNG)
+
+3. UNICODE
+
+   - 統一編碼，避免ANSI在同一個數值下對應不同的字符集會有不同的字符的問題，有著一對一的關係
+   - 對於地球上任意一個字符，都給它一個唯一的數值
+   - 數值範圍由 0x0000 至 0x10FFFF，有1,114,111個數值可以使用
+   - 如何辨識數值 (0x41 0x4e 0x2d) 是代表 A中(0x41, 0x4e 0x2d) 還是 A-N(0x41, 0x4e, 0x2d)，因此涉及**編碼實現**
+
+編碼實現
+
+- ASCII & ANSI 根據地一個字節的第7位來判別是一個字符是由一個字節或是兩個字節來表示
+
+- UNICODE
+  1. 用3個字節表示一個UNICODE --> 過度浪費空間
+  2. UCS-2 Little endian/UTF-16 LE 小字節序
+       - 數值中權重低的放在前面
+       - a 以 0x61 0x00 表示, b 以 0x62 0x00 表示, 中 以 0x2d 0x4e 表示
+       - 文件開頭為 0xff 0xfe 表示 UTF-16 LE
+       - 容錯率較低，只要有一個字節漏掉，整個字符都會偏掉
+       - 3字節的字符無法表示
+  3. UCS-2 Big endian/UTF-16 BE 大字節序
+       - 數值中權重高的放在前面
+       - a 以 0x00 0x41 表示 中 以 0x4e 0x2d 表示
+       - 文件開頭為 0xff 0xff 表示 UTF-16 BE
+       - 容錯率較低，只要有一個字節漏掉，整個字符都會偏掉
+       - 3字節的字符無法表示
+  4. UTF8: 為了改善上方的問題，是一種變長的編碼方式，分為帶有頭部與不帶頭部的2種UTF8格式文件
+     - ASCII字符直接用ASCII碼來表示，一個字節
+     - 非ASCII字符使用變長的編碼，每一個字節的高位都自帶長度信息，因此容錯率較高，只會在掉字節處發生亂碼
+
+        ![img27](./[第4篇]_嵌入式Linux應用開發基礎知識/img27.PNG)
+
+        ![img28](./[第4篇]_嵌入式Linux應用開發基礎知識/img28.PNG)
+
+<h2 id="6.2">6-2_ASCII字符的點陣顯示</h2>
+
+LCD中要顯示一個ASCII字符，首先要找到字符對應的點陣，在Linux內核中`kernel/linux-5.4/lib/fonts/`路徑下有以結構font_data的形式保存各個字符的點陣
+
+- 常用的為font_8x16.c --> 橫方向8bits, 縱方向16bits
+- 每一個bit為一個像素
+
+    ![img29](./[第4篇]_嵌入式Linux應用開發基礎知識/img29.PNG)
+
+- 在LCD顯示ASCII字符的函數 [show_ascii.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/08_show_ascii/show_ascii.c)
+
+    ```C
+    #define FONTDATAMAX 4096
+
+    static const unsigned char fontdata_8x16[FONTDATAMAX] = {
+        /*..........................*/
+    }
+    /**********************************************************************
+     * 函數名稱： lcd_put_ascii
+     * 功能描述： 在LCD指定位置上顯示一個8*16的字符
+     * 輸入參數： x坐標，y坐標，ascii碼
+     * 輸出參數： 無
+     * 返 回 值： 無
+     * 修改日期        版本號     修改人      修改內容
+     * -----------------------------------------------
+     * 2020/05/12     V1.0      zh(angenao)      創建
+     ***********************************************************************/
+    void lcd_put_ascii(int x, int y, unsigned char c)
+    {
+        unsigned char *dots = (unsigned char *)&fontdata_8x16[c*16];
+        int i, b;
+        unsigned char byte;
+
+        for (i = 0; i < 16; i++)
+        {
+            byte = dots[i];
+            for (b = 7; b >= 0; b--)
+            {
+                if (byte & (1<<b))
+                {
+                    /* show */
+                    lcd_put_pixel(x+7-b, y+i, 0xffffff);    /* 白 */
+                }
+                else
+                {
+                    /* hide */
+                    lcd_put_pixel(x+7-b, y+i, 0);           /* 黑 */
+                }
+            }
+        }
+    }
+    ```
+
+<h2 id="6.3">6-3_中文字符的點陣顯示</h2>
+
+使用點陣字符時，中文字符的顯示跟ASCII字符是一樣的，要注意的地方為中文的編碼(GB2312 or UTF-8)
+
+編寫C程序時，可以使用ANSI編碼或是UTF-8編碼，可透過下面選項告訴編譯器，若沒指定的話，GCC會默認編碼方式為UTF-8編碼
+
+```bash
+-finput-charset=GB2312
+-finput-charset=UTF-8
+```
+
+將test_charset_ansi.c中的編碼內容轉換成UTF-8
+
+```bash
+gcc -finput-charset=GB2312 -fexec-charset=UTF-8 -o test_charset_ansi test_charset_ansi.c
+```
+
+將test_charset_utf8.c中的編碼內容轉換成ANSI
+
+```bash
+gcc -finput-charset=UTF-8 -fexec-charset=GB2312 -o test_charset_utf8 test_charset_utf8.c
+```
+
+常用漢字16*16點陣字庫 [HZK16](./[第4篇]_嵌入式Linux應用開發基礎知識/source/09_show_chinese/HZK16)，每個漢字使用32字節來描述
+
+![img30](./[第4篇]_嵌入式Linux應用開發基礎知識/img30.PNG)
+
+HZJ16以GB2312編碼值來查找點陣
+- 以 `中` 為例，它的編碼值是 `0xd6 0xd0`
+- 其中 `0xd6` 表示區碼，表示在哪一區：第 `0xd6 - 0xa1` 區
+- 其中 `0xd0` 表示位碼，表示它是這個區的哪一個字符：第 `0xd0 - 0xa1` 個
+- 一區有 `94` 個漢字，且區位碼從 `0xa1` 開始
+- LCD中文字符的點陣顯示代碼
+
+    ```C
+    /**********************************************************************
+     * 函數名稱： lcd_put_chinese
+     * 功能描述： 在LCD指定位置上顯示一個16*16的漢字
+     * 輸入參數： x坐標，y坐標，ascii碼
+     * 輸出參數： 無
+     * 返 回 值： 無
+     * 修改日期        版本號     修改人	      修改內容
+     * -----------------------------------------------
+     * 2020/05/12	     V1.0	  zh(angenao)	      創建
+     ***********************************************************************/
+    void lcd_put_chinese(int x, int y, unsigned char *str)
+    {
+        unsigned int area  = str[0] - 0xA1;
+        unsigned int where = str[1] - 0xA1;
+        unsigned char *dots = hzkmem + (area * 94 + where)*32;
+        unsigned char byte;
+
+        int i, j, b;
+        for (i = 0; i < 16; i++)
+            for (j = 0; j < 2; j++)
+            {
+                byte = dots[i*2 + j];
+                for (b = 7; b >=0; b--)
+                {
+                    if (byte & (1<<b))
+                    {
+                        /* show */
+                        lcd_put_pixel(x+j*8+7-b, y+i, 0xffffff); /* 白 */
+                    }
+                    else
+                    {
+                        /* hide */
+                        lcd_put_pixel(x+j*8+7-b, y+i, 0); /* 黑 */
+                    }
+                }
+            }
+    }
+
+    int main(int argc, char **argv)
+    {
+        unsigned char str[] = "中";
+
+        fd_fb = open("/dev/fb0", O_RDWR);
+        if (fd_fb < 0)
+        {
+            printf("can't open /dev/fb0\n");
+            return -1;
+        }
+
+        if (ioctl(fd_fb, FBIOGET_VSCREENINFO, &var))
+        {
+            printf("can't get var\n");
+            return -1;
+        }
+
+        line_width  = var.xres * var.bits_per_pixel / 8;
+        pixel_width = var.bits_per_pixel / 8;
+        screen_size = var.xres * var.yres * var.bits_per_pixel / 8;
+        fbmem = (unsigned char *)mmap(NULL , screen_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_fb, 0);
+        if (fbmem == (unsigned char *)-1)
+        {
+            printf("can't mmap\n");
+            return -1;
+        }
+
+        fd_hzk16 = open("HZK16", O_RDONLY);
+        if (fd_hzk16 < 0)
+        {
+            printf("can't open HZK16\n");
+            return -1;
+        }
+        if(fstat(fd_hzk16, &hzk_stat))
+        {
+            printf("can't get fstat\n");
+            return -1;
+        }
+        hzkmem = (unsigned char *)mmap(NULL , hzk_stat.st_size, PROT_READ, MAP_SHARED, fd_hzk16, 0);
+        if (hzkmem == (unsigned char *)-1)
+        {
+            printf("can't mmap for hzk16\n");
+            return -1;
+        }
+
+        /* 清屏: 全部设为黑色 */
+        memset(fbmem, 0, screen_size);
+
+        lcd_put_ascii(var.xres/2, var.yres/2, 'A'); /*在屏幕中间显示8*16的字母A*/
+
+        printf("chinese code: %02x %02x\n", str[0], str[1]);
+        lcd_put_chinese(var.xres/2 + 8,  var.yres/2, str);
+
+        munmap(fbmem , screen_size);
+        close(fd_fb);
+
+        return 0;
+    }
+    ```
+
+
+<h2 id="6.4">6-4_交叉編譯程序_以freetype為例</h2>
+
+
+<h2 id="6.5">6-5_使用freetype顯示單個文字</h2>
+
+
+
+
+<h2 id="6.6">6-6_使用freetype顯示一行文字</h2>
+
+

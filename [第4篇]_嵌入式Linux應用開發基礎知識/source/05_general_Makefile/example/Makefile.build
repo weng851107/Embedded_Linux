@@ -12,15 +12,15 @@ include Makefile
 # $(filter %/, $(obj-y))   : c/ d/
 # __subdir-y  : c d
 # subdir-y    : c d
-__subdir-y	:= $(patsubst %/,%,$(filter %/, $(obj-y)))
+__subdir-y	:= $(patsubst %/, %, $(filter %/, $(obj-y)))
 subdir-y	+= $(__subdir-y)
 
 # c/built-in.o d/built-in.o
-subdir_objs := $(foreach f,$(subdir-y),$(f)/built-in.o)
+subdir_objs := $(foreach f, $(subdir-y), $(f)/built-in.o)
 
 # a.o b.o
 cur_objs := $(filter-out %/, $(obj-y))
-dep_files := $(foreach f,$(cur_objs),.$(f).d)
+dep_files := $(foreach f, $(cur_objs), .$(f).d)
 dep_files := $(wildcard $(dep_files))
 
 ifneq ($(dep_files),)
