@@ -20,6 +20,7 @@
     - [三、頂層目錄的Makefile.build](#3.6.3)
     - [四、怎麼使用這套Makefile](#3.6.4)
   - [3-7_通用Makefile的解析](#3.7)
+  - [3-8_簡介buildroot](#3.8)
 - [04_文件IO](#4)
   - [4-1_文件IO_讀寫文件](#4.1)
   - [4-2_文件IO_內核接口](#4.2)
@@ -29,9 +30,12 @@
   - [6-1_字符的編碼方式](#6.1)
   - [6-2_ASCII字符的點陣顯示](#6.2)
   - [6-3_中文字符的點陣顯示](#6.3)
-  - [6-4_交叉編譯程序_以freetype為例](#6.4)
+  - [6-4_手動交叉編譯程序_以freetype為例](#6.4)
   - [6-5_使用freetype顯示單個文字](#6.5)
   - [6-6_使用freetype顯示一行文字](#6.6)
+- [07_輸入系統](#7)
+  - [7-1_輸入系統框架及調試](#7.1)
+
 
 
 <h1 id="0">Note</h1>
@@ -1387,6 +1391,24 @@ Makefile搭配Makefile.build編譯程式之流程分析
 
 ![img12](./[第4篇]_嵌入式Linux應用開發基礎知識/img12.PNG)
 
+<h2 id="3.8">3-8_簡介buildroot</h2>
+
+### 什麼是buildroot
+
+Buildroot是Linux平臺上一個構建嵌入式Linux系統的框架。
+
+整個Buildroot是由Makefile腳本和Kconfig配置文件構成的。
+
+你可以和編譯Linux內核一樣，通過buildroot配置，menuconfig修改，編譯出一個完整的可以直接燒寫到機器上運行的Linux系統軟件(包含boot、kernel、rootfs以及rootfs中的各種庫和應用程序)。
+
+下載: `git clone git://git.buildroot.net/buildroot`
+
+解壓: `tar -xzvf buildroot-2017.02.9.tar.gz`
+
+### buildroot 的目錄結構, 工作原理, 與更進一步資訊
+
+[https://www.twblogs.net/a/5bf5cc22bd9eee37a1434c76#:~:text=2017.02.9.tar.gz-,1.2%20buildroot%20%E7%9A%84%E7%9B%AE%E9%8C%84%E7%B5%90%E6%A7%8B,-buildroot/package/%EF%BC%9A%E4%B8%8B%E9%9D%A2]
+
 <h1 id="4">04_文件IO</h1>
 
 在Linux系統中，一切都是 `文件`：普通文件、驅動程序、網絡通信等等。所有的操作，都是通過 `文件IO` 來操作的。所以，很有必要掌握文件操作的常用接口。
@@ -1798,9 +1820,9 @@ HZJ16以GB2312編碼值來查找點陣
      * 輸入參數： x坐標，y坐標，ascii碼
      * 輸出參數： 無
      * 返 回 值： 無
-     * 修改日期        版本號     修改人	      修改內容
+     * 修改日期        版本號     修改人      修改內容
      * -----------------------------------------------
-     * 2020/05/12	     V1.0	  zh(angenao)	      創建
+     * 2020/05/12     V1.0  zh(angenao)      創建
      ***********************************************************************/
     void lcd_put_chinese(int x, int y, unsigned char *str)
     {
@@ -1891,8 +1913,106 @@ HZJ16以GB2312編碼值來查找點陣
     ```
 
 
-<h2 id="6.4">6-4_交叉編譯程序_以freetype為例</h2>
+<h2 id="6.4">6-4_手動交叉編譯程序_以freetype為例</h2>
 
+FreeType是一個用C語言實現的一個字型光柵化函式庫。它可以用來將字元柵格化並對映成點陣圖以及提供其他字體相關業務的支援。
+
+### 程序運行的一些基礎知識
+
+1. 編譯程序時去哪裡找頭文件
+    系統目錄: 交叉編譯工具鏈裡面的某個 include 目錄
+    自己指定: 編譯時用 `-I dir` 選項指定
+2. 鏈接時去哪找庫文件
+    系統目錄: 交叉編譯工具鏈裡面的某個 lib 目錄
+    自己指定: 編譯時用 `-L dir` 選項指定
+3. 運行時去哪找庫文件
+    系統目錄: 開發版上的 `/lib`, `/usr/lib` 目錄
+    自己指定: 運行程序時用環境變量 `LD_LIBRARY_PATH` 指定
+5. 運行時不需要頭文件，所以頭文件不須放到板子上
+
+### 常見錯誤
+
+頭文件問題 --> 編譯時找不到頭文件
+
+- 在程序中包含頭文件 `#include <xxx.h>`，對於尖括號的頭文件要去哪裡找它
+  - 系統目錄: 交叉編譯工具鏈裡面的某個 include 目錄
+  - 自己指定: 編譯時用 `-I dir` 選項指定
+
+- 透過下方指令可以得知**系統目錄**下的頭文件目錄與庫目錄(LIBRARY_PATH)
+
+    ```bash
+    echo 'main() {}' | arm-linux-gcc -E -v -
+    echo 'main() {}' | gcc -E -v -
+    ```
+
+- 找不到頭文件時，需要確認頭文件目錄有沒有這個文件，或是自己指定頭文件目錄
+
+庫文件問題
+
+- `undefined reference tp 'xxx'`：表示xxx函數未定義
+  - 函數真的未定義，實作它
+  - 未連結使用到函數的函數庫
+
+- 怎麼指定某函式庫，想鏈結 `libabc.so`，在鏈結時加上：`-labc`
+
+- 函式庫在哪裡?
+  - 系統目錄：交叉編譯工具鏈裡面的某個 lib 目錄
+  - 自己指定：鏈結時用 `-L dir` 選項指定
+
+- 透過下方指令可以得知**系統目錄**下的頭文件目錄與庫目錄(LIBRARY_PATH)
+
+    ```bash
+    echo 'main() {}' | arm-linux-gcc -E -v -
+    echo 'main() {}' | gcc -E -v -
+    ```
+
+運行問題
+
+- 運行程序時找不到函式庫
+
+    ```
+    error while loading shared libraries: libxxx.so: cannot open shared object file: No such file or directory
+    ```
+
+    系統目錄: 開發版上的 `/lib`, `/usr/lib` 目錄
+    自己指定: 運行程序時用環境變量 `LD_LIBRARY_PATH` 指定，執行下方命令
+
+    ```bash
+    ## method_1
+    export LD_LIBRARY_PATH=/xxx_dir; ./test
+
+    ## method_2
+    LD_LIBRARY_PATH=/xxx_dir  ./test
+    ```
+
+### 交叉編譯程序的萬能命令
+
+交叉編譯開源軟件時，如果裡面有 `configure` 的話，可以使用下方命令：
+
+```bash
+## 分析開源軟件，生成一個Makefile
+$ ./configure --host=arm-linux --prefix=$PWD/tmp
+$ make
+$ make install
+```
+
+- --host寫編譯工具鏈的前綴，如arm-buildroot-linux-gnueabihf-gcc的前綴是arm-buildroot-linux-gnueabihf-
+
+- 就可以在當前目錄的 tmp 目錄下看見 bin, lib, include 等目錄，裡面存有可執行程序, 函式庫, 頭文件
+
+把頭文件、庫文件放到工具鏈目錄裡
+
+- 編譯一個函式庫後，把得到的頭文件與庫文件放入工具鏈的 `include`, `lib` 目錄，別個應用程序要使用這些函數時，會比較方便
+- 工具鏈裡有多個 `include`, `lib` 目錄，透過下方指令可以確定系統目錄下的頭文件目錄與庫目錄(LIBRARY_PATH)
+
+    ```bash
+    echo 'main() {}' | arm-linux-gcc -E -v -
+    echo 'main() {}' | gcc -E -v -
+    ```
+
+把庫文件放到開發版上的`lib`或`/usr/lib`目錄裡
+
+- 程序在開發版上運行時，需要用到板子上/lib或/usr/lib下的庫文件，不需要頭文件
 
 <h2 id="6.5">6-5_使用freetype顯示單個文字</h2>
 
@@ -1900,5 +2020,173 @@ HZJ16以GB2312編碼值來查找點陣
 
 
 <h2 id="6.6">6-6_使用freetype顯示一行文字</h2>
+
+
+<h1 id="7">07_輸入系統</h1>
+
+什麼是輸入設備
+- 常見的輸入設備有 `鍵盤`、`滑鼠`、`遙控桿`、`書寫板` 與 `觸碰屏幕`，用戶通過這些輸入設備與Linux系統進行數據交換
+
+什麼是輸入系統
+- 輸入設備種類繁多，能否統一他們的接口
+- Linux系統實現一套兼容所有輸入設備的框架來統一管理這些設備，驅動人員基於這套框架開發驅動程序，應用開發人員就可以使用統一的API去使用設備
+
+<h2 id="7.1">7-1_輸入系統框架及調試</h2>
+
+### 框架概述
+
+用戶程序直接訪問 `/dev/input/event0` 節點設備，或者使用 `tslib` 訪問設備節點，數據的流程如下：
+1. APP發起讀操作，若無數據則休眠
+2. 用戶操作設備，硬件上產生中斷
+3. 輸入系統驅動層對應的驅動程序處理中斷
+    讀取到數據，轉換成標準的輸入事件，向核心層匯報
+    所謂輸入事件就是一個 `struct input_event` 結構體
+4. 核心層可以決定把輸入事件轉發給上面哪個handler來處理
+    比如 `evdev_handler`, `kbd_handler`, `joydev_handler` 等等
+    最常用的是 `evdev_handler` 它能夠接收任意類型的事件，任意id的設備都可以和它匹配連接
+5. APP對輸入事件的處理
+    APP獲取數據的方式有兩種：
+   - 直接訪問 `/dev/input/event0` 節點設備
+
+        ```bash
+        ## 查詢目前使用event的相關資訊
+        cat /proc/bus/input/devices
+
+        ## 直接訪問節點設備
+        hexdump /dev/input/event0
+        ```
+
+        ![img34](./[第4篇]_嵌入式Linux應用開發基礎知識/img34.PNG)
+
+   - 使用 `tslib`、`libinput` 函式庫來間接訪問設備節點
+
+![img31](./[第4篇]_嵌入式Linux應用開發基礎知識/img31.PNG)
+
+### 編寫APP需要掌握的知識
+
+內核中如何表示一個輸入設備
+
+- 使用 `input_dev` 結構體來表示輸入設備
+
+    ```C
+    struct input_dev {
+        const char *name;
+        const char *phys;
+        const char *uniq;
+        struct input_id id;
+
+        unsigned long propbit[BITS_TO_LONGS(INPUT_PROP_CNT)];
+
+        unsigned long evbit[BITS_TO_LONGS(EV_CNT)];
+        unsigned long keybit[BITS_TO_LONGS(KEY_CNT)];
+        unsigned long relbit[BITS_TO_LONGS(REL_CNT)];
+        unsigned long absbit[BITS_TO_LONGS(ABS_CNT)];
+        unsigned long mscbit[BITS_TO_LONGS(MSC_CNT)];
+        unsigned long ledbit[BITS_TO_LONGS(LED_CNT)];
+        unsigned long sndbit[BITS_TO_LONGS(SND_CNT)];
+        unsigned long ffbit[BITS_TO_LONGS(FF_CNT)];
+        unsigned long swbit[BITS_TO_LONGS(SW_CNT)];
+
+        /*.............................*/
+    }
+    ```
+
+驅動程序上報的數據函義三項重要內容：
+
+![img32](./[第4篇]_嵌入式Linux應用開發基礎知識/img32.PNG)
+
+![img33](./[第4篇]_嵌入式Linux應用開發基礎知識/img33.PNG)
+
+APP可以得到什麼數據
+
+- 可以得到一系列的輸入事件，就是一個一個 `struct input_event` 結構體
+- 每個結構體都有發生時間，`struct timeval` 表示自系統啟動以來過多少時間，含有 `tv_sec`(秒), `tv_usec`(微秒)
+
+    ```C
+    struct input_event {
+    #if (__BITS_PER_LONG != 32 || !defined(__USE_TIME_BITS64)) && !defined(__KERNEL__)
+        struct timeval time;
+    #define input_event_sec time.tv_sec
+    #define input_event_usec time.tv_usec
+    #else
+        __kernel_ulong_t __sec;
+    #if defined(__sparc__) && defined(__arch64__)
+        unsigned int __usec;
+        unsigned int __pad;
+    #else
+        __kernel_ulong_t __usec;
+    #endif
+    #define input_event_sec  __sec
+    #define input_event_usec __usec
+    #endif
+        __u16 type;
+        __u16 code;
+        __s32 value;
+    };
+    ```
+
+設置同步事件作為表示上報事件已經完成，(type, code, value) = (0000, 0000, 0000 0000)
+
+![img34](./[第4篇]_嵌入式Linux應用開發基礎知識/img34.PNG)
+
+如何得知設備節點對應的硬件，取得與event對應的相關設備訊息
+
+```bash
+$ cat /proc/bus/input/devices
+```
+
+![img35](./[第4篇]_嵌入式Linux應用開發基礎知識/img35.PNG)
+
+- B: EV=b 用來表示該設備支持哪類輸入事件
+  - b=1011，bit0, 1, 3為high，表示支持三類事件(EV_SYN, EV_KEY, EV_ABS)
+  - B: ABS=2658000 3，表示設備支持EV_ABS事件中的哪些事件，是2個32位的數字(0x02658000, 0x00000003)，高位在前，低位在後，組成一個64位數字，為high的bit有0, 1, 47, 48, 50, 53, 54 (即0x00, 0x01, 0x2f, 0x30, 0x32, 0x35, 0x36)
+
+![img33](./[第4篇]_嵌入式Linux應用開發基礎知識/img33.PNG)
+
+![img36](./[第4篇]_嵌入式Linux應用開發基礎知識/img36.PNG)
+
+<h2 id="7.2">7-2_現場編程讀取獲取輸入設備信息</h2>
+
+輸入系統支持完整的API操作：阻塞、非阻塞、POLL/SELECT、異步通知
+
+APP訪問硬件的4種方式，以媽媽怎麼知道孩子醒了為例
+
+1. 時不時進房間看一下：`查詢方式`
+    簡單，但是累
+
+2. 進去房間陪小孩一起睡覺，小孩醒會吵醒她：`休眠-喚醒`
+    不累，但是媽媽沒辦法做其他事
+
+3. 媽媽要做很多事，但可以陪小孩睡一陣子，訂個鬧鐘：`poll方式`
+    要浪費點時間，但是可以繼續做其他事
+    媽媽要是被小孩吵醒，不然被鬧鐘吵醒
+
+4. 媽媽在客廳做事情，小孩醒了他會自己走出房門告訴媽媽：`異步通知`
+
+獲取設備信息
+
+- 通過ioctl獲取設備信息，ioctl的參數如下
+
+    ```C
+    int ioctl(int fd, unsigned long request, ...);
+    ```
+
+    ![img37](./[第4篇]_嵌入式Linux應用開發基礎知識/img37.PNG)
+
+查詢方式
+
+- APP調用open函數時，傳入 `O_NONBLOCK` 表示 `非阻塞`
+- APP調用read函數讀取數據時，如果驅動程序中有數據，則APP的read函數會返回數據，否則會立刻返回錯誤
+
+休眠-喚醒
+
+- APP調用open函數時，不要傳入 `O_NONBLOCK`
+- APP調用read函數讀取數據時，如果驅動程序中有數據，則APP的read函數會返回數據，否則APP會在內核態休眠，當有數據時驅動程序會把APP喚醒，read函數恢復執行並返回數據給APP
+
+POLL方式
+
+- APP先調用open函數
+- APP不是直接調用read函數，而是先調用poll或select函數，這2個函數中可以傳入 `超時時間`。作用是如果驅動程序中有數據，則立刻返回
+
 
 
