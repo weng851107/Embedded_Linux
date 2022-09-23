@@ -1,0 +1,10 @@
+prefix=/mnt/disk2/SF/tmp/tmp/GG
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: tslib
+Description: Touchscreen Access Library
+Version: 1.21
+Libs: -L${libdir} -lts
+Cflags: -I${includedir}

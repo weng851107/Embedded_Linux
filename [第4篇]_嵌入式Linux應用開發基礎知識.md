@@ -35,6 +35,13 @@
   - [6-6_使用freetype顯示一行文字](#6.6)
 - [07_輸入系統](#7)
   - [7-1_輸入系統框架及調試](#7.1)
+  - [7-2_現場編程讀取獲取輸入設備信息](#7.2)
+  - [7-3_查詢與休眠喚醒的方式讀取輸入數據](#7.3)
+  - [7-4_POLL或SELECT的方式讀取輸入數據](#7.4)
+  - [7-5_異步通知的方式讀取輸入數據](#7.5)
+  - [7-6_電阻屏與電容屏](#7.6)
+  - [7-7_tslib框架分析](#7.7)
+  - [7-8_tslib交叉編譯與測試](#7.8)
 
 
 
@@ -2125,7 +2132,7 @@ APP可以得到什麼數據
     };
     ```
 
-設置同步事件作為表示上報事件已經完成，(type, code, value) = (0000, 0000, 0000 0000)
+設置同步事件作為事件的分界，表示上報事件已經完成，(type, code, value) = (0000, 0000, 0000 0000)
 
 ![img34](./[第4篇]_嵌入式Linux應用開發基礎知識/img34.PNG)
 
@@ -2173,20 +2180,330 @@ APP訪問硬件的4種方式，以媽媽怎麼知道孩子醒了為例
 
     ![img37](./[第4篇]_嵌入式Linux應用開發基礎知識/img37.PNG)
 
+- 範例 [01_get_input_info.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/11_input/01_app_demo/01_get_input_info.c)
+
+    ```C
+    int err;
+    int len;
+    struct input_id id;
+    unsigned int evbit[2];
+
+    err = ioctl(fd, EVIOCGID, &id);
+
+    len = ioctl(fd, EVIOCGBIT(0, sizeof(evbit)), &evbit);
+    ```
+
+<h2 id="7.3">7-3_查詢與休眠喚醒的方式讀取輸入數據</h2>
+
 查詢方式
 
 - APP調用open函數時，傳入 `O_NONBLOCK` 表示 `非阻塞`
 - APP調用read函數讀取數據時，如果驅動程序中有數據，則APP的read函數會返回數據，否則會立刻返回錯誤
 
+    ```C
+    int fd;
+    int len;
+    struct input_event event;
+
+    fd = open(argv[1], O_RDWR | O_NONBLOCK);
+
+    while (1)
+    {
+        len = read(fd, &event, sizeof(event));
+        if (len == sizeof(event))
+        {
+            printf("get event: type = 0x%x, code = 0x%x, value = 0x%x\n", event.type, event.code, event.value);
+        }
+        else
+        {
+            printf("read err %d\n", len);
+        }
+    }
+    ```
+
 休眠-喚醒
 
-- APP調用open函數時，不要傳入 `O_NONBLOCK`
+- APP調用open函數時，不要傳入 `O_NONBLOCK`，代表 `阻塞`
 - APP調用read函數讀取數據時，如果驅動程序中有數據，則APP的read函數會返回數據，否則APP會在內核態休眠，當有數據時驅動程序會把APP喚醒，read函數恢復執行並返回數據給APP
 
-POLL方式
+    ```C
+    int fd;
+    int len;
+    struct input_event event;
+
+    fd = open(argv[1], O_RDWR);
+
+    while (1)
+    {
+        len = read(fd, &event, sizeof(event));
+
+        printf("get event: type = 0x%x, code = 0x%x, value = 0x%x\n", event.type, event.code, event.value);
+    }
+    ```
+
+範例: [02_input_read.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/11_input/01_app_demo/02_input_read.c)
+
+<h2 id="7.4">7-4_POLL或SELECT的方式讀取輸入數據</h2>
+
+POLL/SELECT介紹
+
+- POLL機制與SELECT機制是完全一樣的，只是APP接口函數不一樣
+
+- 簡單來說就是**定個時鐘**，在調用poll、select函數時，可以傳入 `超時時間`，在時間內，若有數據可讀且有空間可寫就會立刻返回，否則等到 `超時時間` 結束時返回錯誤
+
+用法如下
 
 - APP先調用open函數
-- APP不是直接調用read函數，而是先調用poll或select函數，這2個函數中可以傳入 `超時時間`。作用是如果驅動程序中有數據，則立刻返回
+- APP不是直接調用read函數，而是先調用poll或select函數，這2個函數中可以傳入 `超時時間`。
+- 作用是如果驅動程序中有數據，則立刻返回，否則進入休眠。在休眠期間，若有人操作硬件使驅動程序獲得數據後，就會把APP喚醒，導致poll或select立刻返回。
+- 如果在 `超時時間` 內無人操作硬件的話，時間到時poll或select函數也會返回，可以根據返回值判斷是哪一種返回
 
+POLL/SELECT函數可以監測多個文件, 多個事件
+
+- 函數介紹
+
+    ```C
+    #include <poll.h>
+
+    struct pollfd {
+        int   fd;         /* file descriptor */
+        short events;     /* requested events */
+        short revents;    /* returned events */
+    };
+
+    /*The caller should specify the number of items in the fds array in nfds.*/
+    /*The timeout argument specifies the number of milliseconds*/
+    /*On success, a positive number is returned; this is the number of structures which have nonzero revents fields (in other words, those descriptors with events or errors reported).  A value of 0
+       indicates that the call timed out and no file descriptors were ready.  On error, -1 is returned, and errno is set appropriately.
+    */
+    int poll(struct pollfd *fds, nfds_t nfds, int timeout);
+    ```
+
+- 事件類型介紹
+
+    ![img38](./[第4篇]_嵌入式Linux應用開發基礎知識/img38.PNG)
+
+- 先從poll的返回值知道它不是超時返回，再去判斷fds數組中的revents
+
+- 範例: [03_input_read_poll.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/11_input/01_app_demo/03_input_read_poll.c)
+
+    ```C
+    #include <poll.h>
+
+    struct input_event event;
+    struct pollfd fds[1];
+    nfds_t nfds = 1;
+
+    fd = open(argv[1], O_RDWR | O_NONBLOCK);
+
+    while (1)
+    {
+        fds[0].fd = fd;
+        fds[0].events  = POLLIN;
+        fds[0].revents = 0;
+        ret = poll(fds, nfds, 5000);
+        if (ret > 0)
+        {
+            if (fds[0].revents == POLLIN)
+            {
+                while (read(fd, &event, sizeof(event)) == sizeof(event))
+                {
+                    printf("get event: type = 0x%x, code = 0x%x, value = 0x%x\n", event.type, event.code, event.value);
+                }
+            }
+        }
+        else if (ret == 0)
+        {
+            printf("time out\n");
+        }
+        else
+        {
+            printf("poll err\n");
+        }
+    }
+    ```
+
+- SELECT範例: [04_input_read_select.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/11_input/01_app_demo/04_input_read_select.c)
+
+<h2 id="7.5">7-5_異步通知的方式讀取輸入數據</h2>
+
+### 功能介紹
+
+同步：你慢我等你 
+異步：你慢那你自己玩，我做自己的事情去，有情況再通知我
+
+異步通知：APP可以忙自己的事，當驅動程序用數據時會主動給APP發信號，導致APP執行信號處理函數
+
+發信號所引發的議題
+1. 誰發： 驅動程序發
+2. 發什麼： 信號
+3. 發什麼信號： SIGIO(驅動程序要通知應用程序所發的信號)
+4. 怎麼發： 內核裡提供函數
+5. 發給誰： APP，AAP要把自己的進程號告訴驅動
+6. APP收到後做什麼： 執行信號處理函數
+7. 信號處理函數和信號之間怎麼掛鉤起來： APP註冊信號處理函數
+
+小孩通知媽媽的事情有很多： 壞了, 渴了, 想找人玩
+Linux系統中也有很多信號，在Linux內核源文件 `include/uapi/asm-generic/signal.h` 中，有很多信號的宏定義
+
+![img39](./[第4篇]_嵌入式Linux應用開發基礎知識/img39.PNG)
+
+驅動程序通知APP時，它會發出 `SIGIO` 這個信號，表示有 `IO事件` 要處理
+就APP而言，想要處理SIGIO信號，就需要提供信號處理函數，並請要跟SIGIO掛鉤。可以透過 `signal函數` 來給某個信號註冊處理函數
+
+![img40](./[第4篇]_嵌入式Linux應用開發基礎知識/img40.PNG)
+
+除了註冊SIGIO的處理函數，APP還要做什麼呢?
+1. 內核裡有很多驅動，你想讓哪一個驅動給你發SIGIO信號?
+    APP要打開驅動程序的設備節點
+2. 驅動程序怎麼知道要發信號給哪個APP
+    APP要把自己的進程ID告訴驅動程序
+3. APP有時候想收到信號，有時候又不想收到信號
+    把APP的意圖告訴驅動，設置Flag裡面的FASYNC位為high，使能**異步通知**
+
+### 應用編程
+
+範例: [05_input_read_fasync.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/11_input/01_app_demo/05_input_read_fasync.c)
+
+```C
+#include <signal.h>
+
+int fd;     /*global variable*/
+```
+
+1. 編寫信號處理函數
+
+    ```C
+    void my_sig_handler(int sig)
+    {
+        struct input_event event;
+        while (read(fd, &event, sizeof(event)) == sizeof(event))
+        {
+            printf("get event: type = 0x%x, code = 0x%x, value = 0x%x\n", event.type, event.code, event.value);
+        }
+    }
+    ```
+
+2. 註冊信號處理函數
+
+    ```C
+    signal(SIGIO, my_sig_handler);
+    ```
+
+3. 打開驅動
+
+    ```C
+    fd = open(argv[1], O_RDWR | O_NONBLOCK);
+    ```
+
+4. 把進程ID告訴驅動
+
+    ```C
+    fcntl(fd, F_SETOWN, getpid());
+    ```
+
+5. 使能驅動的FASYNC功能
+
+    ```C
+    flags = fcntl(fd, F_GETFL);
+    fcntl(fd, F_SETFL, flags | FASYNC);
+    ```
+
+<h2 id="7.6">7-6_電阻屏與電容屏</h2>
+
+觸摸屏分為電阻屏與電容屏
+
+- 電阻屏結構簡單，在以前很流行
+- 電容屏支持多點觸摸，現在手機基本上都是使用電容屏
+
+LCD與觸摸屏並不是同一種東西，LCD和觸摸屏都是輸入設備，只是常常把觸摸屏製作的與LCD的尺寸一樣，並把它覆蓋在LCD上，就變成觸摸屏幕
+
+### 電阻屏
+
+歐姆定律
+
+- 假設電阻是均勻的，長度會和電阻成正比關係
+
+    ![img41](./[第4篇]_嵌入式Linux應用開發基礎知識/img41.PNG)
+
+電阻屏原理
+
+- 基於歐姆定理來實現的，它有上下兩個薄膜(電阻)
+
+    ![img42](./[第4篇]_嵌入式Linux應用開發基礎知識/img42.PNG)
+
+- 平時上下兩層薄膜無接觸，當點擊觸摸屏時，上下兩層薄膜接觸，這時候就可以測量觸點電壓
+  1. 測量 X 座標
+    在xp、xm兩端施加3.3V電壓，yp和ym不能加電壓(yp就相當於探針)，測量yp電壓值，該電壓值就跟 X 座標成正比關係
+
+    $$X = 3.3*V_{yp}/X_{max}$$
+
+
+- 透過在觸摸屏取得觸點的電壓值，並轉換成LCD可以辨識位置的座標值，便可達到觸摸屏幕的效果
+
+  - 但在實際使用時，電阻屏的$X_{max}$, $Y_{max}$無從得知，所以使用之前要先校準，依次點擊觸摸屏的四個角與中心點，推算出X, Y座標的公式
+
+    $$
+    X=func(V_{yp}) \\
+    Y=func(V_{xp})
+    $$
+
+  - 根據LCD的解析度大小與電壓之間的比例關係來建立起關係
+
+    ![img43](./[第4篇]_嵌入式Linux應用開發基礎知識/img43.PNG)
+
+電阻屏數據
+
+- Linux驅動程序中會上報觸點的X, Y數據，需要APP再次處理才能轉換為LCD座標值
+
+    ![img44](./[第4篇]_嵌入式Linux應用開發基礎知識/img44.PNG)
+
+### 電容屏
+
+![img45](./[第4篇]_嵌入式Linux應用開發基礎知識/img45.PNG)
+
+電容屏中有一個控制晶片，它會週期性產生驅動信號，接收電極接收到信號，並可測量電荷大小。
+
+當電容屏被按下時，相當引入了新的電容，進而影響接收電極接收到的電荷大小，主控晶片根據電荷大小即可計算出觸點位置
+
+控制晶片一般是使用I2C接口，只須編寫程序，通過I2C讀取晶片暫存器即可以得到這些數據
+
+電容屏數據
+
+- 支持多點觸摸(Multi-touch)
+- TypeB類型能分辨是哪一個觸點，上報數據時會先上報觸點ID，在上報它的數據
+- 範例：
+
+    ![img46](./[第4篇]_嵌入式Linux應用開發基礎知識/img46.PNG)
+
+    ![img47](./[第4篇]_嵌入式Linux應用開發基礎知識/img47.PNG)
+
+    ![img48](./[第4篇]_嵌入式Linux應用開發基礎知識/img48.PNG)
+
+電容屏實驗數據
+
+![img49](./[第4篇]_嵌入式Linux應用開發基礎知識/img49.PNG)
+
+![img50](./[第4篇]_嵌入式Linux應用開發基礎知識/img50.PNG)
+
+- TOUCH_MAJOR & WIFTH_MAJOR: 橢圓形狀的長軸
+
+    ![img51](./[第4篇]_嵌入式Linux應用開發基礎知識/img51.PNG)
+
+<h2 id="7.7">7-7_tslib框架分析</h2>
+
+https://www.bilibili.com/video/BV1kk4y117Tu?p=27&vd_source=790c8244dbe879457094c8374beb04d3
+
+主要代碼如下
+
+![img52](./[第4篇]_嵌入式Linux應用開發基礎知識/img52.PNG)
+
+![img53](./[第4篇]_嵌入式Linux應用開發基礎知識/img53.PNG)
+
+![img54](./[第4篇]_嵌入式Linux應用開發基礎知識/img54.PNG)
+
+<h2 id="7.8">7-8_tslib交叉編譯與測試</h2>
+
+![img55](./[第4篇]_嵌入式Linux應用開發基礎知識/img55.PNG)
 
 
