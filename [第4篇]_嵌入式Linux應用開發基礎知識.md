@@ -42,6 +42,15 @@
   - [7-6_電阻屏與電容屏](#7.6)
   - [7-7_tslib框架分析](#7.7)
   - [7-8_tslib交叉編譯與測試](#7.8)
+  - [7-9_編寫基於tslib的測試程序](#7.9)
+- [08_網路相關簡介](#8)
+  - [8-1_網路編程概念](#8.1)
+  - [8-2_TCP編程範例](#8.2)
+  - [8-3_UDP編程範例](#8.3)
+- [09_多線程編程](#9)
+- [10_UART串口介紹](#10)
+  - [10.1_串口應用程序編程介紹](#10.1)
+  - [10.2_UART硬件介紹](#10.2)
 
 
 
@@ -2504,6 +2513,535 @@ https://www.bilibili.com/video/BV1kk4y117Tu?p=27&vd_source=790c8244dbe879457094c
 
 <h2 id="7.8">7-8_tslib交叉編譯與測試</h2>
 
+https://www.bilibili.com/video/BV1kk4y117Tu?p=28&vd_source=790c8244dbe879457094c8374beb04d3
+
 ![img55](./[第4篇]_嵌入式Linux應用開發基礎知識/img55.PNG)
+
+<h2 id="7.9">7-9_編寫基於tslib的測試程序</h2>
+
+手指觸碰屏幕時，驅動系統會上報事件
+
+![img56](./[第4篇]_嵌入式Linux應用開發基礎知識/img56.PNG)
+
+使用tslib的話，可以使用ts_read_mt()來完成讀取數據的動作
+
+```C
+/*
+ * Return a scaled touchscreen multitouch sample.
+ */
+/*slots: 幾個觸碰點, nr: 讀幾次數據*/
+TSAPI int ts_read_mt(struct tsdev *, struct ts_sample_mt **, int slots, int nr);
+
+struct ts_sample_mt {
+    /* ABS_MT_* event codes. linux/include/uapi/linux/input-event-codes.h
+        * has the definitions.
+        */
+    int		x;
+    int		y;
+    unsigned int	pressure;
+    int		slot;
+    int		tracking_id;
+
+    int		tool_type;
+    int		tool_x;
+    int		tool_y;
+    unsigned int	touch_major;
+    unsigned int	width_major;
+    unsigned int	touch_minor;
+    unsigned int	width_minor;
+    int		orientation;
+    int		distance;
+    int		blob_id;
+
+    struct timeval	tv;
+
+    /* BTN_TOUCH state */
+    short		pen_down;
+
+    /* valid is set != 0 if this sample
+        * contains new data; see below for the
+        * bits that get set.
+        * valid is set to 0 otherwise
+        */
+    short		valid;
+};
+```
+
+範例程序:
+- 目的 - 不斷印出2個觸點的距離
+- 思路 - 假設是5點觸摸屏，調用一次ts_read_mt可以得到5個新數據，使用新舊數據判斷，如果有2個觸點，就印出距離
+
+    [mt_cal_distance.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/11_input/02_tslib/mt_cal_distance.c)
+
+<h1 id="8">08_網路相關簡介</h1>
+
+<h2 id="8.1">8-1_網路編程概念</h2>
+
+在編程程序時，通常會用UART加上有print log的設置，但當數量變多時，不可能使用這麼多UART線，加上過多的print log，會導致程序速度變慢，非實際使用情況，故通常會透過網路把多台的log資訊傳回到某一台電腦(server?)
+
+數據傳輸三要素：源、目的、長度
+
+分為服務器與客戶端
+- 服務器
+  - 被動響應請求
+- 客戶端
+  - 主動發起請求
+
+![img60](./[第4篇]_嵌入式Linux應用開發基礎知識/img60.PNG)
+
+數據傳輸有兩種方式
+- TCP
+  - 可靠傳輸，有重傳機制，確保資料有傳遞成功
+  - 流量控制
+  - 當數據是不可丟失時使用這種方式，如控制器或是傳遞文件
+- UDP
+  - 不可靠的，資料丟出去，接收者未必一定有收到
+  - 不需要唯一識別碼和序號
+  - 當掉了丟出數據中的某一個並不會影響到其呈獻的效果時，使用這種方式，如視訊時，掉了幾幀並不會影響太多，但避免重傳，可提升速度
+
+![img57](./[第4篇]_嵌入式Linux應用開發基礎知識/img57.PNG)
+
+文件的讀寫
+
+- 透過open, read, write
+
+    ![img58](./[第4篇]_嵌入式Linux應用開發基礎知識/img58.PNG)
+
+IP與端口：用來表示網路傳輸中的源或目的
+
+![img59](./[第4篇]_嵌入式Linux應用開發基礎知識/img59.PNG)
+
+網路協議被分為 5 層
+
+![img61](./[第4篇]_嵌入式Linux應用開發基礎知識/img61.PNG)
+
+- 應用層：系統結構中的最高層，直接為用戶的應用進程(如 電子郵件, 文件傳輸和終端仿真)提供服務
+  - 全球廣域網路(www)的HTTP協議
+  - 電子郵件的SMTP協議
+  - 文件傳送的FTP協議
+  - DNS
+  - Telnet
+  - ....
+- 傳輸層：負責向兩個主機中進程之間的通信提供服務
+  - 傳輸控制協議(Transmission Control Protocol, TCP)
+  - 使用者資料包協定(User Datagram Protocol, UDP)
+- 網路層：將資料從源網路傳輸到目的網路
+- 資料連結層：封包從一個裝置的網路層傳輸到另外一個裝置的網路層的方法
+- 實體(物理)層：物理層確保原始的數據可在各種物理媒體上傳輸
+
+以初學者來說，我們需要使用**傳輸層**編寫應用程序，而應用程序位於**應用層**
+
+- TCP
+
+    ![img62](./[第4篇]_嵌入式Linux應用開發基礎知識/img62.PNG)
+
+    ![img64](./[第4篇]_嵌入式Linux應用開發基礎知識/img64.PNG)
+
+- UDP
+
+    ![img63](./[第4篇]_嵌入式Linux應用開發基礎知識/img63.PNG)
+
+    ![img65](./[第4篇]_嵌入式Linux應用開發基礎知識/img65.PNG)
+
+<h2 id="8.2">8-2_TCP編程範例</h2>
+
+[Linux网络编程入门 (转载)](https://www.cnblogs.com/duzouzhe/archive/2009/06/19/1506699.html)
+
+C 語言中的 fork 函數可以將目前的程式行程（process）複製一份，建立出新的子行程（child process），而原本的行程就稱為父行程（parent process）
+
+fork 在執行之後，會傳回一個整數的傳回值，以下是各種數值所代表的意義：
+
+- 負值（小於零）：建立子行程失敗。
+- 零：代表這個程式處於新建立的子行程中。
+- 正值（大於零）：代表這個程式處於原本的父行程中，這個整數值則是子行程的 ID。
+
+在程序一開始時，執行`signal(SIGCHLD, SIG_IGN);`，可以避免子進程退出時產生殭屍進程
+
+```C
+socket(AF_INET, SOCK_STREAM, 0);
+```
+
+[Server範例](./[第4篇]_嵌入式Linux應用開發基礎知識/source/12_socket/tcp/server.c)
+
+```C
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <signal.h>
+
+/* socket
+ * bind
+ * listen
+ * accept
+ * send/recv
+ */
+
+#define SERVER_PORT 8888
+#define BACKLOG     10
+
+int main(int argc, char **argv)
+{
+    int iSocketServer;
+    int iSocketClient;
+    struct sockaddr_in tSocketServerAddr;
+    struct sockaddr_in tSocketClientAddr;
+    int iRet;
+    int iAddrLen;
+
+    int iRecvLen;
+    unsigned char ucRecvBuf[1024];
+
+    int iClientNum = -1;
+
+    signal(SIGCHLD, SIG_IGN);   /*避免子進程退出時產生殭屍進程*/
+
+    iSocketServer = socket(AF_INET, SOCK_STREAM, 0);
+    if (-1 == iSocketServer)
+    {
+        printf("socket error!\n");
+        return -1;
+    }
+
+    tSocketServerAddr.sin_family      = AF_INET;
+    tSocketServerAddr.sin_port        = htons(SERVER_PORT);  /* host to net, short */
+    tSocketServerAddr.sin_addr.s_addr = INADDR_ANY;  /*htonl(IP); INADDR_ANY表示可以和任何的主機通信*/
+    memset(tSocketServerAddr.sin_zero, 0, 8);
+
+    iRet = bind(iSocketServer, (const struct sockaddr *)&tSocketServerAddr, sizeof(struct sockaddr));
+    if (-1 == iRet)
+    {
+        printf("bind error!\n");
+        return -1;
+    }
+
+    iRet = listen(iSocketServer, BACKLOG);	/*BACKLOG 代表最多可以連接的client端數量*/
+    if (-1 == iRet)
+    {
+        printf("listen error!\n");
+        return -1;
+    }
+
+    while (1)
+    {
+        iAddrLen = sizeof(struct sockaddr);
+        iSocketClient = accept(iSocketServer, (struct sockaddr *)&tSocketClientAddr, &iAddrLen);
+        if (-1 != iSocketClient)
+        {
+            iClientNum++;
+            printf("Get connect from client %d : %s\n",  iClientNum, inet_ntoa(tSocketClientAddr.sin_addr));	/*inet_ntoa: 把IP轉換成一般字符串形式*/
+            if (!fork())
+            {
+                /* 子進程的源碼 */
+                while (1)
+                {
+                    /* 接收客戶端發來的數據並顯示出來 */
+                    iRecvLen = recv(iSocketClient, ucRecvBuf, 1023, 0);
+                    if (iRecvLen <= 0)
+                    {
+                        close(iSocketClient);
+                        return -1;
+                    }
+                    else
+                    {
+                        ucRecvBuf[iRecvLen] = '\0';
+                        printf("Get Msg From Client %d: %s\n", iClientNum, ucRecvBuf);
+                    }
+                }
+            }
+        }
+    }
+
+    close(iSocketServer);
+    return 0;
+}
+```
+
+[Client範例](./[第4篇]_嵌入式Linux應用開發基礎知識/source/12_socket/tcp/client.c)
+
+```C
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <stdio.h>
+
+/* socket
+ * connect
+ * send/recv
+ */
+
+#define SERVER_PORT 8888
+
+int main(int argc, char **argv)
+{
+    int iSocketClient;
+    struct sockaddr_in tSocketServerAddr;
+
+    int iRet;
+    unsigned char ucSendBuf[1024];
+    int iSendLen;
+
+    if (argc != 2)
+    {
+        printf("Usage:\n");
+        printf("%s <server_ip>\n", argv[0]);
+        return -1;
+    }
+
+    iSocketClient = socket(AF_INET, SOCK_STREAM, 0);
+
+    tSocketServerAddr.sin_family      = AF_INET;
+    tSocketServerAddr.sin_port        = htons(SERVER_PORT);  /* host to net, short */
+    //tSocketServerAddr.sin_addr.s_addr = INADDR_ANY;
+    if (0 == inet_aton(argv[1], &tSocketServerAddr.sin_addr))	/*inet_aton: 把字符串轉換成inet address*/
+    {
+        printf("invalid server_ip\n");
+        return -1;
+    }
+    memset(tSocketServerAddr.sin_zero, 0, 8);
+
+
+    iRet = connect(iSocketClient, (const struct sockaddr *)&tSocketServerAddr, sizeof(struct sockaddr));
+    if (-1 == iRet)
+    {
+        printf("connect error!\n");
+        return -1;
+    }
+
+    while (1)
+    {
+        if (fgets(ucSendBuf, 1023, stdin))
+        {
+            iSendLen = send(iSocketClient, ucSendBuf, strlen(ucSendBuf), 0);
+            if (iSendLen <= 0)
+            {
+                close(iSocketClient);
+                return -1;
+            }
+        }
+    }
+
+    return 0;
+}
+```
+
+<h2 id="8.3">8-3_UDP編程範例</h2>
+
+```C
+socket(AF_INET, SOCK_DGRAM, 0);
+```
+
+[Server範例](./[第4篇]_嵌入式Linux應用開發基礎知識/source/12_socket/udp/server.c)
+
+使用connect + send
+
+- [Client範例1](./[第4篇]_嵌入式Linux應用開發基礎知識/source/12_socket/udp/client.c)
+
+不使用connect + sendto(含有目的)
+
+- [Client範例2](./[第4篇]_嵌入式Linux應用開發基礎知識/source/12_socket/udp2/client.c)
+
+<h1 id="9">09_多線程編程</h1>
+
+[參考資料]
+
+### 為什麼要使用多線程
+
+使用多線程的話，可以獨立地處理不同事件，使代碼更加簡潔
+
+假設要做 2 件事，一件需要阻塞等待，另一件需要實時進行，如播放器一邊在屏幕播放視頻，一邊在等待用戶的按鍵操作。如果使用單線程必須一會查詢有無按鍵，一會播放視頻，查詢案件太久就會導致視頻卡頓，視頻播放太久就無法及時響應用戶的操作，透過多線程即可解決此問題
+
+### 線程的概念
+
+線程：作業系統所能調度的最小單位
+
+普通的進程：只有一個線程在執行對應的程序
+
+多線程編程：使一個進程可以去執行多個不同的任務
+
+相比多進程編程而言，線程享有共享資源，即在進程中出現的全局變量，每個線程都可以去訪問它，與進程共享 4G 內存空間，使得系統資源消耗減少
+
+調度的最小單位為線程，分配內存的最小單位為進程
+
+`ps`：查看進程
+
+`ps -T`：查看線程
+
+`ps -T -p <pid>`： 查看某進程的線程
+
+### 編程演示
+
+創建線程
+
+![img66](./[第4篇]_嵌入式Linux應用開發基礎知識/img66.PNG)
+
+- [pthread1.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/13_thread/pthread1.c)
+
+主線程讀取標準輸入, 發給**接收線程**
+
+- [pthread2.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/13_thread/pthread2.c)
+
+同步操作，透過信號量修改while (g_hasData == 0);死循環占用大量CPU資源
+
+```C
+// 初始化
+#include <semaphore.h>
+int sem_init(sem_t *sem,int pshared,unsigned int value);
+
+等待/释放：
+#include <pthread.h>
+int sem_wait(sem_t *sem);
+int sem_post(sem_t *sem);
+```
+
+- [pthread3.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/13_thread/pthread3.c)
+
+互斥訪問，避免同時訪問導致獲得的變量不一致
+
+```C
+static pthread_mutex_t g_tMutex  = PTHREAD_MUTEX_INITIALIZER;
+
+pthread_mutex_lock(&g_tMutex);
+
+pthread_mutex_unlock(&g_tMutex);
+```
+
+- [pthread4.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/13_thread/pthread4.c)
+
+同步操作，條件變量
+
+```C
+static pthread_cond_t  g_tConVar = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t g_tMutex  = PTHREAD_MUTEX_INITIALIZER;
+
+/*線程A: 等待條件成立*/
+pthread_mutex_lock(&g_tMutex);
+pthread_cond_wait(&g_tConVar, &g_tMutex);   /*等待條件成立，並釋放互斥變量，條件成立時，獲取互斥變量*/
+/* 操作臨界資源 */
+pthread_mutex_unlock(&g_tMutex);
+
+/*線程B: 喚醒等待g_tConVar的線程*/
+pthread_cond_signal(&g_tConVar);
+```
+
+- [pthread5.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/13_thread/pthread5.c)
+
+<h1 id="10">10_UART串口介紹</h1>
+
+[Serial Programming Guide for POSIX Operating Systems](https://digilander.libero.it/robang/rubrica/serial.htm#CONTENTS)
+
+<h2 id="10.1">10.1_串口應用程序編程介紹</h2>
+
+UART：通用異步收發傳輸器（Universal Asynchronous Receiver/Transmitter)，簡稱串口。
+
+- 調試：移植u-boot、內核、應用程序時，主要使用串口查看打印信息
+- 外接各種模塊：GPS、藍芽......等等
+
+    ![img67](./[第4篇]_嵌入式Linux應用開發基礎知識/img67.PNG)
+
+<h2 id="10.2">10.2_UART硬件介紹</h2>
+
+### 1. 串口的硬件介紹
+
+UART的全稱是**Universal Asynchronous Receiver and Transmitter**，即異步發送和接收。
+串口在嵌入式中用途非常的廣泛，主要的用途有：
+
+* **打印調試信息**；
+* **外接各種模塊**：GPS、藍牙、Radar；
+
+串口因為結構簡單、穩定可靠，廣受歡迎。
+
+通過三根線即可，發送、接收、地線。
+
+<img src="./[第4篇]_嵌入式Linux應用開發基礎知識/lesson1_001.jpg">
+
+通過TxD->RxD把ARM開發板要發送的信息發送給PC機。
+通過RxD->TxD線把PC機要發送的信息發送給ARM開發板。
+最下面的地線統一參考地。
+
+### 2. 串口的參數
+
+- 波特率：一般選波特率都會有9600,19200,115200等選項。其實意思就是每秒傳輸這麼多個比特位數(bit)。
+- 起始位:先發出一個邏輯”0”的信號，表示傳輸數據的開始。
+- 數據位：可以是5~8位邏輯”0”或”1”。如ASCII碼（7位），擴展BCD碼（8位）。小端傳輸。
+- 校驗位：數據位加上這一位後，使得“1”的位數應為偶數(偶校驗)或奇數(奇校驗)，以此來校驗數據傳送的正確性。
+- 停止位：它是一個字符數據的結束標誌。
+
+    ![img02](./[第4篇]_嵌入式Linux應用開發基礎知識/img69.PNG)
+
+- 縮寫: 115200, 8n1 ---> baudrate=115200, 8bits Data, n 沒有校驗位, 1 停止位為high
+
+**怎麼發送一字節數據，比如‘A‘?**
+
+‘A’的ASCII值是**0x41**,二進制就是**01000001**，怎樣把這8位數據發送給PC機呢？
+
+* 雙方約定好波特率（每一位(bit)佔據的時間）；
+
+* 規定傳輸協議
+
+  *  **原來是高電平，ARM拉低電平，保持1bit時間**；
+  *  PC在低電平開始處計時；
+  *  ARM根據數據依次驅動TxD的電平，同時PC依次讀取RxD引腳電平，獲得數據；
+
+  <img src="./[第4篇]_嵌入式Linux應用開發基礎知識/lesson1_002.jpg">
+
+前面圖中提及到了邏輯電平，也就是說代表信號1的引腳電平是人為規定的。
+如圖是**TTL/CMOS邏輯電平**下，傳輸‘A’時的波形：
+
+<img src="./[第4篇]_嵌入式Linux應用開發基礎知識/lesson1_003.jpg">
+
+* 在xV至5V之間，就認為是邏輯1
+* 在0V至yV之間就為邏輯0
+
+如圖是**RS-232邏輯電平**下，傳輸‘A’時的波形：
+
+<img src="./[第4篇]_嵌入式Linux應用開發基礎知識/lesson1_004.jpg">
+
+* 在-12V至-3V之間，就認為是邏輯1
+* 在+3V至+12V之間就為邏輯0
+
+**RS-232的電平比TTL/CMOS高，能傳輸更遠的距離，在工業上用得比較多。**
+
+市面上大多數ARM芯片都不止一個串口，一般使用串口0來調試，其它串口來外接模塊。
+
+### 3. 串口電平
+
+ARM芯片上得串口都是TTL電平的，通過板子上或者外接的**電平轉換芯片**，轉成RS232接口，連接到電腦的RS232串口上，實現兩者的數據傳輸。
+
+<img src="./[第4篇]_嵌入式Linux應用開發基礎知識/lesson1_005.jpg">
+
+現在的電腦越來越少有RS232串口的接口，當USB是幾乎都有的。因此使用**USB串口芯片**將ARM芯片上的TTL電平轉換成USB串口協議，即可通過USB與電腦數據傳輸。
+
+<img src="./[第4篇]_嵌入式Linux應用開發基礎知識/lesson1_006.jpg">
+
+上面的兩種方式，對ARM芯片的編程操作都是一樣的。
+
+### 4. 串口內部結構
+
+ARM芯片是如何發送/接收數據？
+如圖所示串口結構圖：
+
+<img src="./[第4篇]_嵌入式Linux應用開發基礎知識/lesson1_007.bmp">
+
+* 要發送數據時
+  * CPU控制內存要發送的數據通過FIFO傳給UART單位，
+  * UART裡面的移位器，依次將數據發送出去，
+  * 在發送完成後產生中斷提醒CPU傳輸完成。
+
+* 接收數據時
+  * 獲取接收引腳的電平，逐位放進接收移位器，
+  * 再放入FIFO，寫入內存。
+  * 在接收完成後產生中斷提醒CPU傳輸完成。
+
+
+
 
 
