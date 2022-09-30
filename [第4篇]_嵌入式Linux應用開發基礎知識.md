@@ -49,9 +49,18 @@
   - [8-3_UDP編程範例](#8.3)
 - [09_多線程編程](#9)
 - [10_UART串口介紹](#10)
-  - [10.1_串口應用程序編程介紹](#10.1)
-  - [10.2_UART硬件介紹](#10.2)
-
+  - [10-1_串口應用程序編程介紹](#10.1)
+  - [10-2_UART硬件介紹](#10.2)
+  - [10-3_TTY體系中設備節點的差別](#10.3)
+  - [10-4_TTY驅動程序框架](#10.4)
+  - [10-5_串口(UART)應用編程](#10.5)
+- [11_I2C介紹](#11)
+  - [11-1_I2C應用程序編程介紹](#11.1)
+  - [11-2_I2C協議](#11.2)
+  - [11-3_SMBus協議](#11.3)
+  - [11-4_I2C系統的重要結構體](#11.4)
+  - [11-5_無須編寫驅動直接訪問設備_I2C-tool](#11.5)
+  - [11-6_編寫APP直接訪問EEPROM](#11.6)
 
 
 <h1 id="0">Note</h1>
@@ -2936,9 +2945,7 @@ pthread_cond_signal(&g_tConVar);
 
 <h1 id="10">10_UART串口介紹</h1>
 
-[Serial Programming Guide for POSIX Operating Systems](https://digilander.libero.it/robang/rubrica/serial.htm#CONTENTS)
-
-<h2 id="10.1">10.1_串口應用程序編程介紹</h2>
+<h2 id="10.1">10-1_串口應用程序編程介紹</h2>
 
 UART：通用異步收發傳輸器（Universal Asynchronous Receiver/Transmitter)，簡稱串口。
 
@@ -2947,7 +2954,7 @@ UART：通用異步收發傳輸器（Universal Asynchronous Receiver/Transmitter
 
     ![img67](./[第4篇]_嵌入式Linux應用開發基礎知識/img67.PNG)
 
-<h2 id="10.2">10.2_UART硬件介紹</h2>
+<h2 id="10.2">10-2_UART硬件介紹</h2>
 
 ### 1. 串口的硬件介紹
 
@@ -3041,7 +3048,658 @@ ARM芯片是如何發送/接收數據？
   * 再放入FIFO，寫入內存。
   * 在接收完成後產生中斷提醒CPU傳輸完成。
 
+<h2 id="10.3">10-3_TTY體系中設備節點的差別</h2>
 
+TTY的歷史來源
 
+- TELETYPE
 
+    ![img70](./[第4篇]_嵌入式Linux應用開發基礎知識/img70.PNG)
 
+- 以前電腦不普及，因此會多個終端共用一台電腦
+
+    ![img71](./[第4篇]_嵌入式Linux應用開發基礎知識/img71.PNG)
+
+    ![img72](./[第4篇]_嵌入式Linux應用開發基礎知識/img72.PNG)
+
+- 終端升級，不再透過串口(UART)，但其驅動仍在TTY體系
+
+    ![img73](./[第4篇]_嵌入式Linux應用開發基礎知識/img73.PNG)
+
+- 個人電腦與虛擬終端
+
+    ![img74](./[第4篇]_嵌入式Linux應用開發基礎知識/img74.PNG)
+
+下圖中兩條紅線之內的代碼被稱為TTY子系統
+
+![img75](./[第4篇]_嵌入式Linux應用開發基礎知識/img75.PNG)
+
+- 會有多個虛擬終端可以共同使用同一個display, keyboard終端
+
+- /dev/tty：代表當前終端
+
+- UART串口不會使用虛擬終端
+
+Console
+
+![img76](./[第4篇]_嵌入式Linux應用開發基礎知識/img76.PNG)
+
+![img77](./[第4篇]_嵌入式Linux應用開發基礎知識/img77.PNG)
+
+- 可利用 `cat /proc/cmdline` 來取得目前的 cmdline 是什麼
+
+    ```bash
+    32bits-Arm $ cat /proc/cmdline
+    console=ttyS0 noinitrd root=/dev/mmcblk0p7 rw rootfstype=ext4 init=/linuxrc rootwait
+
+    chicony@ubuntu:~$ cat /proc/cmdline 
+    BOOT_IMAGE=/boot/vmlinuz-4.4.0-142-generic root=UUID=696523e2-dd6d-43d8-8c1e-f0c45f05e24f ro splash quiet
+    ```
+
+<h2 id="10.4">10-4_TTY驅動程序框架</h2>
+
+什麼是行規程(line discipline)
+
+- 當我們在一個終端上按下按鍵 `l` 的時候，終端只是把字母 `l` 回顯了回來，緊接著按下按鍵 `s`，依然是回顯字母 `s`，隨後我們按下回車鍵，回顯的不再是回車鍵(請問怎麼回顯)，而是列出並顯示了當前目錄下的所有文件，這些規則是如何定義的？
+
+- 當我們按下組合鍵 `Ctrl-C` 的時候，當前的進程就終止了，這個又是如何規定的？為什麼不是組合鍵 `Shift-B` 來完成同樣的事？
+
+- 所有這些問題都可以用行規程來回答，行規程是一套約定俗成的協議。約定雙方可以是計算機和終端(包括輸出設備和人體輸入設備)。
+
+- 行規程規定了鍵盤，串口，打印機，顯示器等輸入輸出設備和用戶態Shell等程序之間的行為規範，鍵盤上的按鍵事件被行規程解釋成了Shell可以理解的輸入並給出相應的輸出。人們要想操作計算機，這套規程是必不可少的，它事實上規定了信息從外部進入計算機的規範。
+
+使用場景
+
+![img78](./[第4篇]_嵌入式Linux應用開發基礎知識/img78.PNG)
+
+TTY驅動程序框架
+
+![img79](./[第4篇]_嵌入式Linux應用開發基礎知識/img79.PNG)
+
+<h2 id="10.5">10-5_串口(UART)應用編程</h2>
+
+[Serial Programming Guide for POSIX Operating Systems](https://digilander.libero.it/robang/rubrica/serial.htm#CONTENTS)
+
+### 串口API
+
+![img78](./[第4篇]_嵌入式Linux應用開發基礎知識/img78.PNG)
+
+在Linux系統中，操作設備的統一接口就是：open/ioctl/read/write
+
+對於UART，又在ioctl之上封裝了很多函數，主要是用來設置行規程(line sidcipline)
+
+所以對於UART編程的套路如下：
+
+- open
+- 設置行規程，如波特率, 數據位, 停止位, 檢驗位, RAW模式, 一有數據就返回
+- read/write
+
+行規程的參數用 `結構體termios` 來表示，[Linux串口—struct termios结构体](https://blog.csdn.net/yemingzhu163/article/details/5897156)
+
+```C
+typedef unsigned char	cc_t;
+typedef unsigned int	speed_t;
+typedef unsigned int	tcflag_t;
+
+#define NCCS 32
+struct termios
+{
+    tcflag_t c_iflag;		/* input mode flags */
+    tcflag_t c_oflag;		/* output mode flags */
+    tcflag_t c_cflag;		/* control mode flags */
+    tcflag_t c_lflag;		/* local mode flags */
+    cc_t c_line;		/* line discipline */
+    cc_t c_cc[NCCS];		/* control characters */
+    speed_t c_ispeed;		/* input speed */
+    speed_t c_ospeed;		/* output speed */
+#define _HAVE_STRUCT_TERMIOS_C_ISPEED 1
+#define _HAVE_STRUCT_TERMIOS_C_OSPEED 1
+};
+```
+
+![img80](./[第4篇]_嵌入式Linux應用開發基礎知識/img80.PNG)
+
+### 串口回環範例
+
+[serial_send_recv.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/14_UART/01_app_send_recv/serial_send_recv.c)
+
+開啟串口
+
+```C
+int open_port(char *com)
+{
+    int fd;
+    //fd = open(com, O_RDWR|O_NOCTTY|O_NDELAY);
+    fd = open(com, O_RDWR|O_NOCTTY);
+    if (-1 == fd){
+        return(-1);
+    }
+
+        if(fcntl(fd, F_SETFL, 0)<0) /* 设置串口为阻塞状态*/
+        {
+            printf("fcntl failed!\n");
+            return -1;
+        }
+
+        return fd;
+}
+```
+
+- O_NOCTTYl：設置其不作為控制終端，即不會把`ctrl+C`視為控制命令，而是當作raw data
+
+- fcntl
+
+    ![img81](./[第4篇]_嵌入式Linux應用開發基礎知識/img81.PNG)
+
+- 設置 波特率, 數據位, 停止位, 檢驗位, 讀多少數據或多久返回
+
+    ```C
+    /* set_opt(fd,115200,8,'N',1) */
+    int set_opt(int fd,int nSpeed, int nBits, char nEvent, int nStop)
+    {
+        struct termios newtio,oldtio;
+
+        if ( tcgetattr( fd,&oldtio) != 0) { 
+            perror("SetupSerial 1");
+            return -1;
+        }
+
+        bzero( &newtio, sizeof( newtio ) );
+        newtio.c_cflag |= CLOCAL | CREAD; 
+        newtio.c_cflag &= ~CSIZE; 
+
+        newtio.c_lflag  &= ~(ICANON | ECHO | ECHOE | ISIG);  /*Input*/
+        newtio.c_oflag  &= ~OPOST;   /*Output*/
+
+        switch( nBits )
+        {
+        case 7:
+            newtio.c_cflag |= CS7;
+        break;
+        case 8:
+            newtio.c_cflag |= CS8;
+        break;
+        }
+
+        switch( nEvent )
+        {
+        case 'O':
+            newtio.c_cflag |= PARENB;
+            newtio.c_cflag |= PARODD;
+            newtio.c_iflag |= (INPCK | ISTRIP);
+        break;
+        case 'E': 
+            newtio.c_iflag |= (INPCK | ISTRIP);
+            newtio.c_cflag |= PARENB;
+            newtio.c_cflag &= ~PARODD;
+        break;
+        case 'N': 
+            newtio.c_cflag &= ~PARENB;
+        break;
+        }
+
+        switch( nSpeed )
+        {
+        case 2400:
+            cfsetispeed(&newtio, B2400);
+            cfsetospeed(&newtio, B2400);
+        break;
+        case 4800:
+            cfsetispeed(&newtio, B4800);
+            cfsetospeed(&newtio, B4800);
+        break;
+        case 9600:
+            cfsetispeed(&newtio, B9600);
+            cfsetospeed(&newtio, B9600);
+        break;
+        case 115200:
+            cfsetispeed(&newtio, B115200);
+            cfsetospeed(&newtio, B115200);
+        break;
+        default:
+            cfsetispeed(&newtio, B9600);
+            cfsetospeed(&newtio, B9600);
+        break;
+        }
+
+        if( nStop == 1 )
+            newtio.c_cflag &= ~CSTOPB;
+        else if ( nStop == 2 )
+            newtio.c_cflag |= CSTOPB;
+
+        newtio.c_cc[VMIN]  = 1;  /* 读数据时的最小字节数: 没读到这些数据我就不返回! */
+        newtio.c_cc[VTIME] = 0; /* 等待第1个数据的时间: 
+                                    * 0: 代表永遠等待
+                                    * 比如VMIN设为10表示至少读到10个数据才返回,
+                                    * 但是没有数据总不能一直等吧? 可以设置VTIME(单位是10秒)
+                                    * 假设VTIME=1，表示: 
+                                    *    10秒内一个数据都没有的话就返回
+                                    *    如果10秒内至少读到了1个字节，那就继续等待，完全读到VMIN个数据再返回
+                                    */
+
+        tcflush(fd,TCIFLUSH);
+
+        if((tcsetattr(fd,TCSANOW,&newtio))!=0)
+        {
+            perror("com set error");
+            return -1;
+        }
+        //printf("set done!\n");
+        return 0;
+    }
+    ```
+
+### GPS範例
+
+[gps_read.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/14_UART/02_gps/gps_read.c)
+
+讀取raw data：
+
+```C
+/* eg. $GPGGA,082559.00,4005.22599,N,11632.58234,E,1,04,3.08,14.6,M,-5.6,M,,*76"<CR><LF>*/
+int read_gps_raw_data(int fd, char *buf)
+{
+    int i = 0;
+    int iRet;
+    char c;
+    int start = 0;
+
+    while (1)
+    {
+        iRet = read(fd, &c, 1);
+        if (iRet == 1)
+        {
+            if (c == '$')
+                start = 1;
+            if (start)
+            {
+                buf[i++] = c;
+            }
+            if (c == '\n' || c == '\r')
+                return 0;
+        }
+        else
+        {
+            return -1;
+        }
+    }
+}
+```
+
+解析數據
+
+```C
+/* eg. $GPGGA,082559.00,4005.22599,N,11632.58234,E,1,04,3.08,14.6,M,-5.6,M,,*76"<CR><LF> */
+int parse_gps_raw_data(char *buf, char *time, char *lat, char *ns, char *lng, char *ew)
+{
+    char tmp[10];
+
+    if (buf[0] != '$')
+        return -1;
+    else if (strncmp(buf+3, "GGA", 3) != 0)
+        return -1;
+    else if (strstr(buf, ",,,,,"))
+    {
+        printf("Place the GPS to open area\n");
+        return -1;
+    }
+    else {
+        //printf("raw data: %s\n", buf);
+        sscanf(buf, "%[^,],%[^,],%[^,],%[^,],%[^,],%[^,]", tmp, time, lat, ns, lng, ew);
+        return 0;
+    }
+}
+```
+
+<h1 id="11">11_I2C介紹</h1>
+
+<h2 id="11.1">11-1_I2C應用程序編程介紹</h2>
+
+硬件架構
+
+![img82](./[第4篇]_嵌入式Linux應用開發基礎知識/img82.PNG)
+
+軟件架構
+
+![img83](./[第4篇]_嵌入式Linux應用開發基礎知識/img83.PNG)
+
+<h2 id="11.2">11-2_I2C協議</h2>
+
+[i2c_spec.pdf](./[第4篇]_嵌入式Linux應用開發基礎知識/doc/i2c_spec.pdf)
+
+### 硬件連接
+
+![img84](./[第4篇]_嵌入式Linux應用開發基礎知識/img84.PNG)
+
+### 傳輸數據類比
+
+![img85](./[第4篇]_嵌入式Linux應用開發基礎知識/img85.PNG)
+
+![img86](./[第4篇]_嵌入式Linux應用開發基礎知識/img86.PNG)
+
+### IIC傳輸數據的格式
+
+![img87](./[第4篇]_嵌入式Linux應用開發基礎知識/img87.PNG)
+
+![img88](./[第4篇]_嵌入式Linux應用開發基礎知識/img88.PNG)
+
+![img89](./[第4篇]_嵌入式Linux應用開發基礎知識/img89.PNG)
+
+![img92](./[第4篇]_嵌入式Linux應用開發基礎知識/img92.PNG)
+
+![img90](./[第4篇]_嵌入式Linux應用開發基礎知識/img90.PNG)
+
+![img91](./[第4篇]_嵌入式Linux應用開發基礎知識/img91.PNG)
+
+<h2 id="11.3">11-3_SMBus協議</h2>
+
+參考資料：
+
+- Linux內核文檔： Documentation\i2c\smbus-protocol.rst
+- SMBus協議： http://www.smbus.org/specs/
+- [SMBus_3_0_20141220.pdf](./[第4篇]_嵌入式Linux應用開發基礎知識/doc/SMBus_3_0_20141220.pdf)
+- I2CTools: https://mirrors.edge.kernel.org/pub/software/utils/i2c-tools/
+
+### SMBus是I2C協議的一個子集
+
+![img93](./[第4篇]_嵌入式Linux應用開發基礎知識/img93.PNG)
+
+![img94](./[第4篇]_嵌入式Linux應用開發基礎知識/img94.PNG)
+
+### SMBus協議分析
+
+對於I2C協議，它只定義了怎麼傳輸數據，但是並沒有定義數據的格式，這完全由設備來定義。
+
+對於SMBus協議，它定義了幾種數據格式。
+
+下面文檔中的 `Functionality flag` 是Linux的某個I2C控制器驅動所支持的功能。
+比如 `Functionality flag: I2C_FUNC_SMBUS_QUICK`，表示需要I2C控制器支持 `SMBus Quick Command`
+
+![img95](./[第4篇]_嵌入式Linux應用開發基礎知識/img95.PNG)
+
+![img96](./[第4篇]_嵌入式Linux應用開發基礎知識/img96.PNG)
+
+![img97](./[第4篇]_嵌入式Linux應用開發基礎知識/img97.PNG)
+
+![img98](./[第4篇]_嵌入式Linux應用開發基礎知識/img98.PNG)
+
+![img99](./[第4篇]_嵌入式Linux應用開發基礎知識/img99.PNG)
+
+![img100](./[第4篇]_嵌入式Linux應用開發基礎知識/img100.PNG)
+
+![img101](./[第4篇]_嵌入式Linux應用開發基礎知識/img101.PNG)
+
+![img102](./[第4篇]_嵌入式Linux應用開發基礎知識/img102.PNG)
+
+### SMBus和I2C的建議
+
+因為很多設備都實現了SMBus，而不是更寬泛的I2C協議，所以優先使用SMBus。
+
+即使I2C控制器沒有實現SMBus，軟件方面也是可以使用I2C協議來模擬SMBus。
+
+所以：Linux建議優先使用SMBus。
+
+<h2 id="11.4">11-4_I2C系統的重要結構體</h2>
+
+參考資料：
+
+- Linux驅動程序: drivers/i2c/i2c-dev.c
+
+- I2CTools: https://mirrors.edge.kernel.org/pub/software/utils/i2c-tools/
+
+### I2C硬件框架
+
+![img103](./[第4篇]_嵌入式Linux應用開發基礎知識/img103.PNG)
+
+### I2C傳輸協議
+
+![img104](./[第4篇]_嵌入式Linux應用開發基礎知識/img104.PNG)
+
+### Linux軟件框架
+
+![img105](./[第4篇]_嵌入式Linux應用開發基礎知識/img105.PNG)
+
+### 重要結構體
+
+使用一句話概括I2C傳輸：APP通過I2C Controller與I2C Device傳輸數據。
+
+在Linux中：
+
+- 怎麼表示I2C Controller
+  - 一個芯片裡可能有多個I2C Controller，比如第0個、第1個、……
+  - 對於使用者，只要確定是第幾個I2C Controller即可
+  - 使用i2c_adapter表示一個I2C BUS，或稱為I2C Controller
+  - 裡面有2個重要的成員：
+    - nr：第幾個I2C BUS(I2C Controller)
+    - i2c_algorithm，裡面有該I2C BUS的傳輸函數，用來收發I2C數據
+  - i2c_adapter
+
+    ![img106](./[第4篇]_嵌入式Linux應用開發基礎知識/img106.PNG)
+
+  - i2c_algorithm
+
+    ![img107](./[第4篇]_嵌入式Linux應用開發基礎知識/img107.PNG)
+
+- 怎麼表示I2C Device
+  - 一個I2C Device，一定有設備地址
+  - 它連接在哪個I2C Controller上，即對應的i2c_adapter是什麼
+  - 使用i2c_client來表示一個I2C Device
+
+    ![img108](./[第4篇]_嵌入式Linux應用開發基礎知識/img108.PNG)
+
+  - 怎麼表示要傳輸的數據
+    - 在上面的i2c_algorithm結構體中可以看到要傳輸的數據被稱為：i2c_msg
+    - i2c_msg
+
+        ![img109](./[第4篇]_嵌入式Linux應用開發基礎知識/img109.PNG)
+
+  - i2c_msg中的flags用來表示傳輸方向：bit 0等於I2C_M_RD表示讀，bit 0等於0表示寫
+  - 一個i2c_msg要麼是讀，要麼是寫
+  - 舉例：設備地址為0x50的EEPROM，要讀取它裡面存儲地址為0x10的一個字節，應該構造幾個i2c_msg？
+    - 要構造2個i2c_msg
+    - 第一個i2c_msg表示寫操作，把要訪問的存儲地址0x10發給設備
+    - 第二個i2c_msg表示讀操作
+    - 代碼如下
+
+        ![img110](./[第4篇]_嵌入式Linux應用開發基礎知識/img110.PNG)
+
+### 內核裡怎麼傳輸數據
+
+使用一句話概括I2C傳輸：
+
+- APP通過I2C Controller與I2C Device傳輸數據
+- APP通過i2c_adapter與i2c_client傳輸i2c_msg
+- 內核函數i2c_transfer
+  - i2c_msg裡含有addr，所以這個函數里不需要i2c_client
+
+    ![img111](./[第4篇]_嵌入式Linux應用開發基礎知識/img111.PNG)
+
+<h2 id="11.5">11-5_無須編寫驅動直接訪問設備_I2C-tool</h2>
+
+### 無需編寫驅動程序即可訪問I2C設備
+
+APP訪問硬件肯定是需要驅動程序的
+
+對於I2C設備，內核提供了驅動程序drivers/i2c/i2c-dev.c ，通過它可以直接使用下面的I2C控制器
+驅動程序來訪問I2C設備。
+
+框架如下：
+
+![img112](./[第4篇]_嵌入式Linux應用開發基礎知識/img112.PNG)
+
+i2c-tools是一套好用的工具，也是一套示例代碼。
+
+### 體驗I2C-Tools
+
+使用一句話概括I2C傳輸：APP通過I2C Controller與I2C Device傳輸數據。
+
+所以使用I2C-Tools時也需要指定：
+
+- 哪個I2C控制器(或稱為I2C BUS、I2C Adapter)
+- 哪個I2C設備(設備地址)
+- 數據：讀還是寫、數據本身
+
+![img113](./[第4篇]_嵌入式Linux應用開發基礎知識/img113.PNG)
+
+![img114](./[第4篇]_嵌入式Linux應用開發基礎知識/img114.PNG)
+
+`i2cdetect`：I2C檢測
+
+![img115](./[第4篇]_嵌入式Linux應用開發基礎知識/img115.PNG)
+
+![img116](./[第4篇]_嵌入式Linux應用開發基礎知識/img116.PNG)
+
+`i2cget`：I2C讀
+
+![img117](./[第4篇]_嵌入式Linux應用開發基礎知識/img117.PNG)
+
+`i2cset`：I2C寫
+
+![img118](./[第4篇]_嵌入式Linux應用開發基礎知識/img118.PNG)
+
+![img119](./[第4篇]_嵌入式Linux應用開發基礎知識/img119.PNG)
+
+`i2ctransfer`：I2C傳輸(不是基於SMBus)
+
+![img120](./[第4篇]_嵌入式Linux應用開發基礎知識/img120.PNG)
+
+使用I2C-Tools操作傳感器AP3216C
+
+![img121](./[第4篇]_嵌入式Linux應用開發基礎知識/img121.PNG)
+
+### I2C-Tools的訪問I2C設備的2種方式
+
+I2C-Tools可以通過SMBus來訪問I2C設備，也可以使用一般的I2C協議來訪問I2C設備。
+
+使用一句話概括I2C傳輸：APP通過I2C Controller與I2C Device傳輸數據。
+
+在APP裡，有這幾個問題：
+
+- 怎麼指定I2C控制器？
+  - i2c-dev.c提供為每個I2C控制器(I2C Bus、I2C Adapter)都生成一個設備節點：`/dev/i2c-0`、`/dev/i2c-1`等待
+  - open某個`/dev/i2c-X`節點，就是去訪問該I2C控制器下的設備
+
+- 怎麼指定I2C設備？
+  - 通過ioctl指定I2C設備的地址
+  - `ioctl(file, I2C_SLAVE, address)`
+    - 如果該設備已經有了對應的設備驅動程序，則返回失敗
+  - `ioctl(file, I2C_SLAVE_FORCE, address)`
+    - 如果該設備已經有了對應的設備驅動程序，但是還是想通過i2c-dev驅動來訪問它，則使用這個ioctl來指定I2C設備地址
+  - 怎麼傳輸數據？兩種方式
+    - 一般的I2C方式：`ioctl(file, I2C_RDWR, &rdwr)`
+    - SMBus方式：`ioctl(file, I2C_SMBUS, &args)`
+
+### 源碼分析
+
+使用I2C的方式: `i2ctransfer.c`
+
+[i2cbusses.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/15_I2C/01_at24c02_test/i2cbusses.c)
+
+![img122](./[第4篇]_嵌入式Linux應用開發基礎知識/img122.PNG)
+
+使用SMBus的方式: `i2cget.c`、`i2cset.c`
+
+[smbus.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/15_I2C/01_at24c02_test/smbus.c)
+
+![img123](./[第4篇]_嵌入式Linux應用開發基礎知識/img123.PNG)
+
+<h2 id="11.6">11-6_編寫APP直接訪問EEPROM</h2>
+
+### 硬件連接
+
+![img124](./[第4篇]_嵌入式Linux應用開發基礎知識/img124.PNG)
+
+### AT24C02訪問方法
+
+![img125](./[第4篇]_嵌入式Linux應用開發基礎知識/img125.PNG)
+
+![img126](./[第4篇]_嵌入式Linux應用開發基礎知識/img126.PNG)
+
+![img127](./[第4篇]_嵌入式Linux應用開發基礎知識/img127.PNG)
+
+根據 [i2cbusses.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/15_I2C/01_at24c02_test/i2cbusses.c) 與 [smbus.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/15_I2C/01_at24c02_test/smbus.c) 撰寫AT24C02訪問範例 [at24c02_test.c](./[第4篇]_嵌入式Linux應用開發基礎知識/source/15_I2C/01_at24c02_test/at24c02_test.c)
+
+```C
+int open_i2c_dev(int i2cbus, char *filename, size_t size, int quiet)
+{
+    int file, len;
+
+    len = snprintf(filename, size, "/dev/i2c/%d", i2cbus);
+    if (len >= (int)size) {
+        fprintf(stderr, "%s: path truncated\n", filename);
+        return -EOVERFLOW;
+    }
+    file = open(filename, O_RDWR);
+
+    if (file < 0 && (errno == ENOENT || errno == ENOTDIR)) {
+        len = snprintf(filename, size, "/dev/i2c-%d", i2cbus);
+        if (len >= (int)size) {
+            fprintf(stderr, "%s: path truncated\n", filename);
+            return -EOVERFLOW;
+        }
+        file = open(filename, O_RDWR);
+    }
+
+    if (file < 0 && !quiet) {
+        if (errno == ENOENT) {
+            fprintf(stderr, "Error: Could not open file "
+                "`/dev/i2c-%d' or `/dev/i2c/%d': %s\n",
+                i2cbus, i2cbus, strerror(ENOENT));
+        } else {
+            fprintf(stderr, "Error: Could not open file "
+                "`%s': %s\n", filename, strerror(errno));
+            if (errno == EACCES)
+                fprintf(stderr, "Run as root?\n");
+        }
+    }
+
+    return file;
+}
+```
+
+```C
+int set_slave_addr(int file, int address, int force)
+{
+    /* With force, let the user read from/write to the registers
+        even when a driver is also running */
+    if (ioctl(file, force ? I2C_SLAVE_FORCE : I2C_SLAVE, address) < 0) {
+        fprintf(stderr,
+            "Error: Could not set address to 0x%02x: %s\n",
+            address, strerror(errno));
+        return -errno;
+    }
+
+    return 0;
+}
+```
+
+```C
+__s32 i2c_smbus_write_byte_data(int file, __u8 command, __u8 value)
+{
+    union i2c_smbus_data data;
+    data.byte = value;
+    return i2c_smbus_access(file, I2C_SMBUS_WRITE, command, I2C_SMBUS_BYTE_DATA, &data);
+}
+```
+
+```C
+__s32 i2c_smbus_read_i2c_block_data(int file, __u8 command, __u8 length, __u8 *values)
+{
+    union i2c_smbus_data data;
+    int i, err;
+
+    if (length > I2C_SMBUS_BLOCK_MAX)
+        length = I2C_SMBUS_BLOCK_MAX;
+    data.block[0] = length;
+
+    err = i2c_smbus_access(file, I2C_SMBUS_READ, command,
+                    length == 32 ? I2C_SMBUS_I2C_BLOCK_BROKEN :
+                I2C_SMBUS_I2C_BLOCK_DATA, &data);
+    if (err < 0)
+        return err;
+
+    for (i = 1; i <= data.block[0]; i++)
+        values[i-1] = data.block[i];
+    return data.block[0];
+}
+```
