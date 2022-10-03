@@ -10,6 +10,12 @@
 
 [韋東山老師, 快速入門 git repository](https://e.coding.net/weidongshan/01_all_series_quickstart.git)
 
+[Linux 内核源码（kernel source）路径](https://blog.csdn.net/lanchunhui/article/details/72866103)
+
+- 内核源码所在的位置：/usr/src
+
+[Linux驱动之用man查看内核函数](https://blog.csdn.net/lang523493505/article/details/104273604)
+
 <h1 id="1">快速入門</h1>
 
 [[第1篇]_新學習路線_視頻介紹_資料下載.md](./[第1篇]_新學習路線_視頻介紹_資料下載.md)
