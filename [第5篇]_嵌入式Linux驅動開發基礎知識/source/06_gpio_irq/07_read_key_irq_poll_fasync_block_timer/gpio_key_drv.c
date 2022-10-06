@@ -145,7 +145,7 @@ static irqreturn_t gpio_key_isr(int irq, void *dev_id)
 {
 	struct gpio_key *gpio_key = dev_id;
 	printk("gpio_key_isr key %d irq happened\n", gpio_key->gpio);
-	mod_timer(&gpio_key->key_timer, jiffies + HZ/5);
+	mod_timer(&gpio_key->key_timer, jiffies + HZ/50);
 	return IRQ_HANDLED;
 }
 

@@ -28,6 +28,15 @@
   - [17-4_在STM32MP157上機實驗](#17.4)
 - [18_異常與中斷的概念與處理流程](#18)
 - [19_Linux系統對中斷的處理](#19)
+- [20_驅動程序的基石](#20)
+  - [20-1_休眠與喚醒](#20.1)
+  - [20-2_POLL機制](#20.2)
+  - [20-3_異步通知](#20.3)
+  - [20-4_阻塞與非阻塞](#20.4)
+  - [20-5_定時器](#20.5)
+  - [20-5-1_新內核定時器說明](#20.5.1)
+  - [20-6_中斷下半部tasklet](#20.6)
+  - [20-7_工作隊列](#20.7)
 
 
 <h1 id="0">Note</h1>
@@ -885,3 +894,862 @@ Makefile
 - 17.6.1 查看原理圖確定按鍵引腳
 - 17.6.2 修改設備樹
 - 17.6.3 上機實驗
+
+<h1 id="20">20_驅動程序的基石</h1>
+
+[20_驅動程序的基石.pdf](./[第5篇]_嵌入式Linux驅動開發基礎知識/doc/20_驅動程序的基石.pdf)
+
+<h2 id="20.1">20-1_休眠與喚醒</h2>
+
+18.1.1 適用場景
+
+- 先前 `查詢方式` 在系統調用後，會直接返回引腳電平，不管有無數據
+
+    ![img44](./[第5篇]_嵌入式Linux驅動開發基礎知識/img44.PNG)
+
+- 當應用程序必須等待某個事件發生，比如必須等待按鍵被按下時，可以使用 `休眠-喚醒` 機制
+
+    ![img45](./[第5篇]_嵌入式Linux驅動開發基礎知識/img45.PNG)
+
+  - 進程/線程 上下文: 指的是應用態與內核態，可以休眠
+  - 中斷 上下文: 指的是硬件態與內核態，不可以休眠
+
+18.1.2 內核函數
+
+- `include\linux\wait.h`
+
+1. 休眠函數
+
+    ![img46](./[第5篇]_嵌入式Linux驅動開發基礎知識/img46.PNG)
+
+    ![img47](./[第5篇]_嵌入式Linux驅動開發基礎知識/img47.PNG)
+
+2. 喚醒函數
+
+    ![img48](./[第5篇]_嵌入式Linux驅動開發基礎知識/img48.PNG)
+
+18.1.3 驅動框架
+
+1. 初始化 wq 隊列
+2. 在驅動的 read 函數中，調用 wait_event_interruptible
+3. 在中斷服務程序裡，調用 wake_up_interruptible 喚醒線程
+
+18.1.4 編程
+
+**`02_read_key_irq`**
+
+驅動
+
+- [gpio_key_drv.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/02_read_key_irq/gpio_key_drv.c)
+
+    ```C
+    static int g_key = 0;
+
+    static DECLARE_WAIT_QUEUE_HEAD(gpio_key_wait);
+
+    static ssize_t gpio_key_drv_read (struct file *file, char __user *buf, size_t size, loff_t *offset)
+    {
+        //printk("%s %s line %d\n", __FILE__, __FUNCTION__, __LINE__);
+        int err;
+
+        wait_event_interruptible(gpio_key_wait, g_key);
+        err = copy_to_user(buf, &g_key, 4);
+        g_key = 0;
+
+        return 4;
+    }
+
+    static irqreturn_t gpio_key_isr(int irq, void *dev_id)
+    {
+        struct gpio_key *gpio_key = dev_id;
+        int val;
+        val = gpiod_get_value(gpio_key->gpiod);
+
+
+        printk("key %d %d\n", gpio_key->gpio, val);
+        g_key = (gpio_key->gpio << 8) | val;
+        wake_up_interruptible(&gpio_key_wait);
+
+        return IRQ_HANDLED;
+    }
+    ```
+
+應用程序
+
+- [button_test.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/02_read_key_irq/button_test.c)
+
+    ```C
+    fd = open(argv[1], O_RDWR);
+    if (fd == -1)
+    {
+        printf("can not open file %s\n", argv[1]);
+        return -1;
+    }
+
+    while (1)
+    {
+        /* 3. 读文件 */
+        read(fd, &val, 4);
+        printf("get button : 0x%x\n", val);
+    }
+    ```
+
+Makefile
+
+- [Makefile](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/02_read_key_irq/Makefile)
+
+
+**`03_read_key_irq_circle_buffer`**
+
+- 每次硬件觸發時，驅動都會執行中斷函數獲得數值，但應用程式只會讀取到最近的一筆，因此將原本使用一個全局變量來接收，改成設置環形緩衝區來作改善
+
+    ![img49](./[第5篇]_嵌入式Linux驅動開發基礎知識/img49.PNG)
+
+驅動
+
+- [gpio_key_drv.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/03_read_key_irq_circle_buffer/gpio_key_drv.c)
+
+    ```C
+    /* 环形缓冲区 */
+    #define BUF_LEN 128
+    static int g_keys[BUF_LEN];
+    static int r, w;
+
+    #define NEXT_POS(x) ((x+1) % BUF_LEN)
+
+    static int is_key_buf_empty(void)
+    {
+        return (r == w);
+    }
+
+    static int is_key_buf_full(void)
+    {
+        return (r == NEXT_POS(w));
+    }
+
+    static void put_key(int key)
+    {
+        if (!is_key_buf_full())
+        {
+            g_keys[w] = key;
+            w = NEXT_POS(w);
+        }
+    }
+
+    static int get_key(void)
+    {
+        int key = 0;
+        if (!is_key_buf_empty())
+        {
+            key = g_keys[r];
+            r = NEXT_POS(r);
+        }
+        return key;
+    }
+
+    static DECLARE_WAIT_QUEUE_HEAD(gpio_key_wait);
+
+    /* 实现对应的open/read/write等函数，填入file_operations结构体                   */
+    static ssize_t gpio_key_drv_read (struct file *file, char __user *buf, size_t size, loff_t *offset)
+    {
+        //printk("%s %s line %d\n", __FILE__, __FUNCTION__, __LINE__);
+        int err;
+        int key;
+
+        wait_event_interruptible(gpio_key_wait, !is_key_buf_empty());
+        key = get_key();
+        err = copy_to_user(buf, &key, 4);
+
+        return 4;
+    }
+
+    static irqreturn_t gpio_key_isr(int irq, void *dev_id)
+    {
+        struct gpio_key *gpio_key = dev_id;
+        int val;
+        int key;
+
+        val = gpiod_get_value(gpio_key->gpiod);
+
+
+        printk("key %d %d\n", gpio_key->gpio, val);
+        key = (gpio_key->gpio << 8) | val;
+        put_key(key);
+        wake_up_interruptible(&gpio_key_wait);
+
+        return IRQ_HANDLED;
+    }
+    ```
+
+應用程序
+
+- [button_test.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/03_read_key_irq_circle_buffer/button_test.c)
+
+    ![img50](./[第5篇]_嵌入式Linux驅動開發基礎知識/img50.PNG)
+
+  - 中斷獲得的資訊由於存在緩衝區內，所以應用程序執行時，不會丟失數據
+
+Makefile
+
+- [Makefile](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/03_read_key_irq_circle_buffer/Makefile)
+
+18.1.5 上機實驗
+
+18.1.6 使用環形緩衝區改進驅動程序
+
+<h2 id="20.2">20-2_POLL機制</h2>
+
+18.2.1 適用場景
+
+- 使用休眠-喚醒的方式等待某個事件發生時，有一個缺點：等待的時間可能很久。我們可以加上一個超時時間，這時就可以使用 `poll` 機制
+
+18.2.2 使用流程
+
+![img52](./[第5篇]_嵌入式Linux驅動開發基礎知識/img52.PNG)
+
+- poll機制
+  - 會判別2次是否有數據才會返回
+  - 會掛入隊列，返回狀態。內核會幫你休眠
+
+    ![img51](./[第5篇]_嵌入式Linux驅動開發基礎知識/img51.PNG)
+
+18.2.3 驅動編程
+
+- 使用 poll 機制時，驅動程序的核心就是提供對應的 `drv_poll` 函數
+  - 把當前線程掛入隊列wq：`poll_wait`
+  - 返回設備狀態：
+    - 查詢"有沒有數據可以讀"：`POLLIN`，否則返回0
+    - 查詢"有沒有空間給我寫數據"：`POLLOUT`，否則返回0
+    - 所以 drv_poll 要返回自己的當前狀態：`(POLLIN | POLLRDNORM)` 或 `(POLLOUT | POLLWRNORM)`。
+
+        ```
+        POLLRDNORM 等同於POLLIN，為了兼容某些APP 把它們一起返回
+        POLLWRNORM 等同於POLLOUT ，為了兼容某些APP 把它們一起返回
+        ```
+
+18.2.4 應用編程
+
+- APP 可以調用 `poll` 或 `select` 函數，這2個函數的作用是一樣的。
+
+- poll/select 函數可以監測多個文件，可以監測多種事件
+
+    ![img53](./[第5篇]_嵌入式Linux驅動開發基礎知識/img53.PNG)
+
+    ![img54](./[第5篇]_嵌入式Linux驅動開發基礎知識/img54.PNG)
+
+18.2.5 現場編程
+
+**04_read_key_irq_poll**
+
+驅動
+
+- [gpio_key_drv.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/04_read_key_irq_poll/gpio_key_drv.c)
+
+    ```C
+    static DECLARE_WAIT_QUEUE_HEAD(gpio_key_wait);
+
+    static unsigned int gpio_key_drv_poll(struct file *fp, poll_table * wait)
+    {
+        printk("%s %s line %d\n", __FILE__, __FUNCTION__, __LINE__);
+        poll_wait(fp, &gpio_key_wait, wait);
+        return is_key_buf_empty() ? 0 : POLLIN | POLLRDNORM;
+    }
+    ```
+
+應用程序
+
+- [button_test.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/04_read_key_irq_poll/button_test.c)
+
+    ```C
+    struct pollfd fds[1];
+    int timeout_ms = 5000;
+
+    fds[0].fd = fd;
+    fds[0].events = POLLIN;
+
+
+    while (1)
+    {
+        /* 3. 读文件 */
+        ret = poll(fds, 1, timeout_ms);
+
+        if ((ret == 1) && (fds[0].revents & POLLIN))
+        {
+            read(fd, &val, 4);
+            printf("get button : 0x%x\n", val);
+        }
+        else
+        {
+            printf("timeout\n");
+        }
+    }
+    ```
+
+Makefile
+
+- [Makefile](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/04_read_key_irq_poll/Makefile)
+
+18.2.6 POLL 機制的內核代碼詳解
+
+<h2 id="20.3">20-3_異步通知</h2>
+
+18.3.1 適用場景
+
+- 使用 `休眠-喚醒`、`POLL` 機制時，都需要休眠等待某個事件發生時，它們的差別在於後者可以指定休眠的時長。
+
+- 異步通知：
+  - 同步：主動等待。你在旁邊等著，眼睛盯著店員，生怕別人插隊，他一做好你就知道。
+  - 異步：被動獲得結果。你付錢後就去玩手機了，店員做好後他會打電話告訴你。
+
+
+
+18.3.2 使用流程
+
+- 驅動程序透過發信號來通知APP
+
+    ① 誰發：驅動程序發
+    ② 發什麼：信號
+    ③ 發什麼信號：SIGIO
+    ④ 怎麼發：內核裡提供有函數
+    ⑤ 發給誰：APP，APP 要把自己告訴驅動
+    ⑥ APP 收到後做什麼：執行信號處理函數
+    ⑦ 信號處理函數和信號，之間怎麼掛鉤：APP 註冊信號處理函數
+
+- Linux 系統中有信號的宏定義，在 Linux 內核源文件 `include\uapi\asmgeneric\
+signal.h` 中
+
+  - `SIGIO`：驅動常用信號，表示有IO事件
+  - `kill -9 <pid>`：透過kill發出SIGKILL信號
+
+- 信號註冊
+
+    ![img55](./[第5篇]_嵌入式Linux驅動開發基礎知識/img55.PNG)
+
+- APP
+  - APP 要打開驅動程序的設備節點
+  - APP 要把自己的進程 ID 告訴驅動程序
+  - APP 的何時想收到信號的意愿告诉驱动
+
+- 驅動程序
+  - APP 設置進程 ID 時，驅動程序要記錄下進程 ID
+  - APP 還要使能驅動程序的異步通知功能，驅動中有對應的函數。f_flags 中有一個FASYNC 位，它被設置為1 時表示使能異步通知功能。
+  - 發生中斷時，有數據時，驅動程序調用內核輔助函數(`kill_fasync`)發信號
+
+![img56](./[第5篇]_嵌入式Linux驅動開發基礎知識/img56.PNG)
+
+18.3.3 驅動編程
+
+**05_read_key_irq_poll_fasync**
+
+- [gpio_key_drv.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/05_read_key_irq_poll_fasync/gpio_key_drv.c)
+
+    ```C
+    struct fasync_struct *button_fasync;
+
+    static DECLARE_WAIT_QUEUE_HEAD(gpio_key_wait);
+
+    /* 实现对应的open/read/write等函数，填入file_operations结构体                   */
+    static ssize_t gpio_key_drv_read (struct file *file, char __user *buf, size_t size, loff_t *offset)
+    {
+        //printk("%s %s line %d\n", __FILE__, __FUNCTION__, __LINE__);
+        int err;
+        int key;
+
+        wait_event_interruptible(gpio_key_wait, !is_key_buf_empty());
+        key = get_key();
+        err = copy_to_user(buf, &key, 4);
+
+        return 4;
+    }
+
+    static int gpio_key_drv_fasync(int fd, struct file *file, int on)
+    {
+        if (fasync_helper(fd, file, on, &button_fasync) >= 0)
+            return 0;
+        else
+            return -EIO;
+    }
+
+    /* 定义自己的file_operations结构体                                              */
+    static struct file_operations gpio_key_drv = {
+        .owner   = THIS_MODULE,
+        .read    = gpio_key_drv_read,
+        .fasync  = gpio_key_drv_fasync,
+    };
+
+    static irqreturn_t gpio_key_isr(int irq, void *dev_id)
+    {
+        struct gpio_key *gpio_key = dev_id;
+        int val;
+        int key;
+
+        val = gpiod_get_value(gpio_key->gpiod);
+
+        printk("key %d %d\n", gpio_key->gpio, val);
+        key = (gpio_key->gpio << 8) | val;
+        put_key(key);
+        wake_up_interruptible(&gpio_key_wait);
+        kill_fasync(&button_fasync, SIGIO, POLL_IN);
+
+        return IRQ_HANDLED;
+    }
+    ```
+
+18.3.4 應用編程
+
+**05_read_key_irq_poll_fasync**
+
+- [button_test.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/05_read_key_irq_poll_fasync/button_test.c)
+
+    ```C
+    #include <signal.h>
+
+    static void sig_func(int sig)
+    {
+        int val;
+        read(fd, &val, 4);
+        printf("get button : 0x%x\n", val);
+    }
+
+    signal(SIGIO, sig_func);
+
+    /* 2. 打开文件 */
+    fd = open(argv[1], O_RDWR);
+    if (fd == -1)
+    {
+        printf("can not open file %s\n", argv[1]);
+        return -1;
+    }
+
+    fcntl(fd, F_SETOWN, getpid());
+    flags = fcntl(fd, F_GETFL);
+    fcntl(fd, F_SETFL, flags | FASYNC);
+
+    while (1)
+    {
+        printf("www.100ask.net \n");
+        sleep(2);
+    }
+    ```
+
+18.3.5 現場編程
+
+**05_read_key_irq_poll_fasync**
+
+- [Makefile](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/05_read_key_irq_poll_fasync/Makefile)
+
+<h2 id="20.4">20-4_阻塞與非阻塞</h2>
+
+- 所謂阻塞，就是等待某件事情發生
+
+- 使用 poll 時，如果傳入的超時時間不為0，這種訪問方法也是`阻塞`的。
+- 使用 poll 時，可以設置超時時間為0，這樣即使沒有數據它也會立刻返回，這就是`非阻塞`方式
+
+- APP 調用 open 函數時，傳入`O_NONBLOCK`，就表示要使用非阻塞方式；默認是阻塞方式。
+  - 對於普通文件、塊設備文件，`O_NONBLOCK` 不起作用。
+  - 對於字符設備文件，`O_NONBLOCK` 起作用的前提是驅動程序針對O_NONBLOCK 做了處理。
+  - 在 open 之後，也可以通過 `fcntl` 修改為阻塞或非阻塞。
+
+18.4.1 應用編程
+
+- open 時設置：
+
+    ```C
+    int fd = open(“/dev/xxx”, O_RDWR | O_NONBLOCK);     /* 非阻塞方式 */
+    int fd = open(“/dev/xxx”, O_RDWR );                 /* 阻塞方式 */
+    ```
+
+- open 之後設置：
+
+    ```C
+    int flags = fcntl(fd, F_GETFL);
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);         /* 非阻塞方式 */
+    fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);        /* 阻塞方式 */
+    ```
+
+- [button_test.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/06_read_key_irq_poll_fasync_block/button_test.c)
+
+18.4.2 驅動編程
+
+- 當 APP 打開某個驅動時，在內核中會有一個struct file 結構體對應這個驅動，這個結構體中有f_flags，就是打開文件時的標記位；可以設置f_flasgs `的O_NONBLOCK` 位，表示非阻塞；也可以清除這個位表示阻塞。
+
+    ```C
+    static ssize_t drv_read(struct file *fp, char __user *buf, size_t count, loff_t *ppos)
+    {
+        if (queue_empty(&as->queue) && fp->f_flags & O_NONBLOCK)
+            return -EAGAIN;
+        wait_event_interruptible(apm_waitqueue, !queue_empty(&as->queue));
+        ……
+    }
+    ```
+
+- [gpio_key_drv.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/06_read_key_irq_poll_fasync_block/gpio_key_drv.c)
+
+18.4.3 驅動開發原則
+
+- 驅動程序程序"只提供功能，不提供策略"。就是說驅動程序可以提供休眠喚醒、查詢等等各種方式，驅動程序只提供這些能力，怎麼用由 APP 決定。
+
+<h2 id="20.5">20-5_定時器</h2>
+
+18.5.1 內核函數
+
+- 所謂定時器，就是鬧鐘，時間到後你就要做某些事
+
+- 有 2 個要素：時間、做事，換成程序員的話就是：`超時時間`、`函數`
+
+- `include\linux\timer.h`
+
+- `setup_timer(timer, fn, data)`：
+  - 設置定時器，主要是初始化timer_list 結構體，設置其中的函數、參數
+
+- `void add_timer(struct timer_list *timer)`：
+  - 向內核添加定時器。 timer->expires 表示超時時間
+  - 當超時時間到達，內核就會調用這個函數：timer->function(timer->data)
+
+- `int mod_timer(struct timer_list *timer, unsigned long expires)`：
+  - 修改定時器的超時時間
+  - 它等同於：
+
+    ```C
+    del_timer(timer);
+    timer->expires = expires;
+    add_timer(timer);
+    ```
+
+- `int del_timer(struct timer_list *timer)`：
+  - 刪除定時器
+
+18.5.2 定時器時間單位
+
+- 編譯內核時，可以在內核源碼根目錄下用 `ls -a` 看到一個隱藏文件，它就是內核配置文件
+
+- `CONFIG_HZ=100`：這表示內核每秒中會發生 100 次系統滴答中斷(tick)，每發生一次 tick 中斷，全局變量 jiffies 就會累加 1
+
+- 在 add_timer 之前，直接修改：
+
+    ```C
+    timer.expires = jiffies + xxx;      /*xxx 表示多少个滴答后超时，也就是xxx*10ms*/
+    timer.expires = jiffies + 2*HZ;     /*HZ 等于CONFIG_HZ，2*HZ 就相当于2 秒*/
+    ```
+
+- 在 add_timer 之後，使用 mod_timer 修改：
+
+    ```C
+    mod_timer(&timer, jiffies + xxx);       /*xxx 表示多少个滴答后超时，也就是xxx*10ms*/
+    mod_timer(&timer, jiffies + 2*HZ);      /*HZ 等于CONFIG_HZ，2*HZ 就相当于2 秒*/
+    ```
+
+18.5.3 使用定時器處理按鍵抖動
+
+- 按下或鬆開一個按鍵，因為機械抖動造成它的 GPIO 電平會反複變化，最後才穩定
+
+- 如果不處理抖動的話，用戶只操作一次按鍵，中斷程序可能會上報多個數據
+
+- 在 GPIO 中斷中並不立刻記錄按鍵值，而是修改定時器超時時間，10ms 後再處理。若 10ms 內又發生中斷，認為抖動則再延後 10ms，直到 10ms 內未發生中斷才紀錄數據
+
+18.5.4 現場編程
+
+驅動
+
+- [gpio_key_drv.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/07_read_key_irq_poll_fasync_block_timer/gpio_key_drv.c)
+
+    ```C
+    struct gpio_key{
+        int gpio;
+        struct gpio_desc *gpiod;
+        int flag;
+        int irq;
+        struct timer_list key_timer;
+    };
+
+    static DECLARE_WAIT_QUEUE_HEAD(gpio_key_wait);
+
+    static void key_timer_expire(unsigned long data)
+    {
+        /* data ==> gpio */
+        struct gpio_key *gpio_key = data;
+        int val;
+        int key;
+
+        val = gpiod_get_value(gpio_key->gpiod);
+
+
+        printk("key_timer_expire key %d %d\n", gpio_key->gpio, val);
+        key = (gpio_key->gpio << 8) | val;
+        put_key(key);
+        wake_up_interruptible(&gpio_key_wait);
+        kill_fasync(&button_fasync, SIGIO, POLL_IN);
+    }
+
+
+    /* 实现对应的open/read/write等函数，填入file_operations结构体                   */
+    static ssize_t gpio_key_drv_read (struct file *file, char __user *buf, size_t size, loff_t *offset)
+    {
+        //printk("%s %s line %d\n", __FILE__, __FUNCTION__, __LINE__);
+        int err;
+        int key;
+
+        if (is_key_buf_empty() && (file->f_flags & O_NONBLOCK))
+            return -EAGAIN;
+
+        wait_event_interruptible(gpio_key_wait, !is_key_buf_empty());
+        key = get_key();
+        err = copy_to_user(buf, &key, 4);
+
+        return 4;
+    }
+    ```
+
+應用程序
+
+- [button_test.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/07_read_key_irq_poll_fasync_block_timer/button_test.c)
+
+18.5.5 上機實驗
+
+- 透過定時器可以屏蔽掉因為機械抖動造成的數據，但對於硬件良好的按鈕，反而會因為設置定時器而造成驅動取得的數據並沒有上報到應用程序
+
+- 定時器可以使某些工作延時處理
+
+- 定時器屬於軟件中斷，如果 jiffies >= timer.expire，則執行某個函數
+
+18.5.6 深入研究：定時器的內部機制
+
+<h2 id="20.5.1">20-5-1_新內核定時器說明</h2>
+
+驅動
+
+- [gpio_key_drv.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/07_read_key_irq_poll_fasync_block_timer_new_timer/gpio_key_drv.c)
+
+- `timer_setup(&gpio_keys_100ask[i].key_timer, key_timer_expire, 0);`
+    old: `setup_timer(&gpio_keys_100ask[i].key_timer, key_timer_expire, &gpio_keys_100ask[i]);` 第三個參數可以放給函數的參數
+
+
+- `static void key_timer_expire(struct timer_list *t);`
+    old: `static void key_timer_expire(unsigned long data);`
+
+- 由於timer呼叫的函數要有struct timer_list的指針作為引數，可以透過這個結構體在該函數內取得更多資訊
+
+    ```C
+    struct gpio_key *gpio_key = from_timer(gpio_key, t, key_timer);
+    ```
+
+應用程序
+
+- [button_test.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/07_read_key_irq_poll_fasync_block_timer_new_timer/button_test.c)
+
+<h2 id="20.6">20-6_中斷下半部tasklet</h2>
+
+中斷的處理有幾個原則：
+
+- 不能嵌套
+- 越快越好
+
+在上半部(硬件中斷)處理緊急的事情，在上半部的處理過程中，中斷是被禁止的；
+在下半部(軟件中斷)處理耗時的事情，在下半部的處理過程中，中斷是使能的。
+
+![img57](./[第5篇]_嵌入式Linux驅動開發基礎知識/img57.PNG)
+
+18.6.1 內核函數
+
+1. 定義tasklet
+
+   - 中斷下半部使用結構體 `tasklet_struct` 來表示
+   - `include\linux\interrupt.h`
+
+    ```C
+    struct tasklet_struct
+    {
+        struct tasklet_struct *next;
+        unsigned long state;
+        atomic_t count;
+        void (*func)(unsigned long);
+        unsigned long data;
+    };
+    ```
+
+   - state 有 2 位：
+     - bit0 表示TASKLET_STATE_SCHED
+       - 等於 1 時表示已經執行了tasklet_schedule 把該tasklet 放入隊列了
+     - bit1 表示TASKLET_STATE_RUN
+       - 等於 1 時，表示正在運行tasklet 中的func 函數；函數執行完後內核會把該位清0
+
+   - count 表示該 tasklet 是否使能
+     - 等於 0 表示使能了，非0 表示被禁止了
+     - 對於count 非0 的 tasklet，裡面的 func 函數不會被執行
+     - 實現一個 tasklet_struct 結構體，這可以用這 2 個宏來定義結構體
+
+        ```C
+        /*使能 tasklet_struct 結構體*/
+        #define DECLARE_TASKLET(name, func, data) \
+        struct tasklet_struct name = { NULL, 0, ATOMIC_INIT(0), func, data }
+
+        /*禁止 tasklet_struct 結構體，使用之前要先调用tasklet_enable 使能它*/
+        #define DECLARE_TASKLET_DISABLED(name, func, data) \
+        struct tasklet_struct name = { NULL, 0, ATOMIC_INIT(1), func, data }
+        ```
+
+     - 也可以使用函數來初始化 tasklet 結構體
+
+        ```C
+        extern void tasklet_init(struct tasklet_struct *t, void (*func)(unsigned long), unsigned long data);
+        ```
+
+2. 使能/禁止tasklet
+
+   - tasklet_enable 把 count 增加 1
+
+        ```C
+        static inline void tasklet_enable(struct tasklet_struct *t);
+        ```
+
+   - tasklet_disable 把 count 減少 1
+
+        ```C
+        static inline void tasklet_disable(struct tasklet_struct *t);
+        ```
+
+3. 調度tasklet
+
+   - 把 tasklet 放入鏈表，並且設置它的 TASKLET_STATE_SCHED 狀態為 1。
+
+        ```C
+        static inline void tasklet_schedule(struct tasklet_struct *t);
+        ```
+
+4. kill tasklet
+
+   - 如果一個 tasklet 未被調度，tasklet_kill 會把它的 TASKLET_STATE_SCHED 狀態清 0
+   - 如果一個 tasklet 已被調度，tasklet_kill 會等待它執行完華，再把它的 TASKLET_STATE_SCHED 狀態清0
+
+    ```C
+    extern void tasklet_kill(struct tasklet_struct *t);
+    ```
+
+18.6.2 tasklet 使用方法
+
+- 先定義 tasklet
+- 需要使用時調用 tasklet_schedule
+- 驅動卸載前調用 tasklet_kill
+
+18.6.3 tasklet 內部機制
+
+- tasklet 屬於 TASKLET_SOFTIRQ 軟件中
+- 入口函數為 tasklet_action，這在內核kernel\softirq.c 中設置
+
+    ① tasklet_schedule 調度 tasklet 時，其中的函數並不會立刻執行，而只是把 tasklet 放入隊列；
+    ② 調用一次 tasklet_schedule，只會導致 tasklnet 的函數被執行一次；
+    ③ 如果 tasklet 的函數尚未執行，多次調用 tasklet_schedule 也是無效的，只會放入隊列一次。
+
+
+08_read_key_irq_poll_fasync_block_timer_tasklet 驅動程序
+
+- [gpio_key_drv.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/08_read_key_irq_poll_fasync_block_timer_tasklet/gpio_key_drv.c)
+
+```C
+struct gpio_key{
+    int gpio;
+    struct gpio_desc *gpiod;
+    int flag;
+    int irq;
+    struct timer_list key_timer;
+    struct tasklet_struct tasklet;
+};
+
+static void key_tasklet_func(unsigned long data)
+{
+    /* data ==> gpio */
+    struct gpio_key *gpio_key = data;
+    int val;
+    int key;
+
+    val = gpiod_get_value(gpio_key->gpiod);
+
+    printk("key_tasklet_func key %d %d\n", gpio_key->gpio, val);
+}
+
+static irqreturn_t gpio_key_isr(int irq, void *dev_id)
+{
+    struct gpio_key *gpio_key = dev_id;
+    printk("gpio_key_isr key %d irq happened\n", gpio_key->gpio);
+    tasklet_schedule(&gpio_key->tasklet);
+    mod_timer(&gpio_key->key_timer, jiffies + HZ/50);
+    return IRQ_HANDLED;
+}
+
+tasklet_init(&gpio_keys_100ask[i].tasklet, key_tasklet_func, &gpio_keys_100ask[i]);
+```
+
+
+08_read_key_irq_poll_fasync_block_timer_tasklet 應用程序
+
+- [button_test.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/08_read_key_irq_poll_fasync_block_timer_tasklet/button_test.c)
+
+Makefile
+
+- [Makefile](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/08_read_key_irq_poll_fasync_block_timer_tasklet/Makefile)
+
+<h2 id="20.7">20-7_工作隊列</h2>
+
+前面講的定時器、下半部 tasklet，它們都是在中斷上下文中執行，它們**無法休眠**
+
+當要處理更複雜的事情時，往往更耗時。這些更耗時的工作放在定時器或是下半部中，會使得系統很卡；並且循環等待某件事情完成也太浪費 CPU 資源了
+
+如果使用線程來處理這些耗時的工作，那就可以解決系統卡頓的問題：因為**線程可以休眠**。
+
+內核線程與應用程序線程共同競爭CPU的資源
+
+在內核中， 我們並不需要自己去創建線程， 可以使用**工作隊列(workqueue)**
+
+內核初始化工作隊列時，就為它創建了內核線程
+
+使用 "工作隊列"，只需要把"工作"放入"工作隊列中"，對應的內核線程就會取出"工作"，執行里面的函數
+
+工作隊列的應用場合：要做的事情比較耗時，甚至可能需要休眠，那麼可
+以使用工作隊列。
+
+缺點：多個工作(函數)是在某個內核線程中依序執行的，前面函數執行很
+慢，就會影響到後面的函數。在多CPU 的系統下，一個工作隊列可以有多個內核線程，可以在一定程度上緩解這個問題。
+
+18.7.1 內核函數
+
+1. 定義 work
+
+
+
+
+2. 使用 work：schedule_work
+
+
+
+
+3. 其他函數
+
+
+18.7.2 編程、上機
+
+
+
+
+18.7.3 內部機制
+
+1. Linux 2.x 的工作隊列創建過程
+
+
+
+2. Linux 4.x 的工作隊列創建過程
+
+
+09_read_key_irq_poll_fasync_block_timer_tasklet_workqueue_new_timer 驅動程序
+
+- [gpio_key_drv.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/09_read_key_irq_poll_fasync_block_timer_tasklet_workqueue_new_timer/gpio_key_drv.c)
+
+
+
+09_read_key_irq_poll_fasync_block_timer_tasklet_workqueue_new_timer 應用程序
+
+- [button_test.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/09_read_key_irq_poll_fasync_block_timer_tasklet_workqueue_new_timer/button_test.c)
+
+Makefile
+
+- [Makefile](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/09_read_key_irq_poll_fasync_block_timer_tasklet_workqueue_new_timer/Makefile)
+
