@@ -37,6 +37,9 @@
   - [20-5-1_新內核定時器說明](#20.5.1)
   - [20-6_中斷下半部tasklet](#20.6)
   - [20-7_工作隊列](#20.7)
+  - [20-8_中斷的線程化處理](#20.8)
+  - [20-9_mmap基礎知識](#20.9)
+  - [20-10_mmap編程](#20.10)
 
 
 <h1 id="0">Note</h1>
@@ -1692,9 +1695,19 @@ Makefile
 
 前面講的定時器、下半部 tasklet，它們都是在中斷上下文中執行，它們**無法休眠**
 
-當要處理更複雜的事情時，往往更耗時。這些更耗時的工作放在定時器或是下半部中，會使得系統很卡；並且循環等待某件事情完成也太浪費 CPU 資源了
+當要處理更複雜的事情時，往往更耗時。這些更耗時的工作放在定時器或是下半部中，會使得系統很卡；並且循環等待某件事情完成也太浪費 CPU 資源了，導致應用程序無法獲得CPU資源?
 
 如果使用線程來處理這些耗時的工作，那就可以解決系統卡頓的問題：因為**線程可以休眠**。
+
+- 應用程序的休眠與喚醒
+
+    ![img58](./[第5篇]_嵌入式Linux驅動開發基礎知識/img58.PNG)
+
+- 內和線程的休眠與喚醒
+
+    ![img59](./[第5篇]_嵌入式Linux驅動開發基礎知識/img59.PNG)
+
+  - 由上圖可知，若使用內核預設的線程來執行work，若某work太耗時會影響到後面work的處理，因此也可以不使用預設線程，自行創建一個內核線程來執行某work
 
 內核線程與應用程序線程共同競爭CPU的資源
 
@@ -1712,38 +1725,102 @@ Makefile
 
 18.7.1 內核函數
 
+- 內核線程、工作隊列(workqueue)都由內核創建了，我們只是使用一個 work_struct 結構體
+
+  - 第1步 構造一個 work_struct 結構體，裡面有函數；
+  - 第2步 把這個 work_struct 結構體放入工作隊列，內核線程就會運行 work 中的函數。
+
 1. 定義 work
 
+   - `include\linux\workqueue.h`
 
+        ```C
+        #define DECLARE_WORK(n, f) \
+        struct work_struct n = __WORK_INITIALIZER(n, f)
 
+        #define DECLARE_DELAYED_WORK(n, f) \
+        struct delayed_work n = __DELAYED_WORK_INITIALIZER(n, f, 0)
+        ```
+
+   - 如果要在代碼中初始化work_struct 結構體，可以使用下面的宏：
+
+        ```C
+        #define INIT_WORK(_work, _func)
+        ```
 
 2. 使用 work：schedule_work
 
-
-
+   - 調用 schedule_work 時，就會把 work_struct 結構體放入隊列中，並喚醒對應的內核線程。內核線程就會從隊列裡把 work_struct 結構體取出來，執行里面的函數。
 
 3. 其他函數
 
-
 18.7.2 編程、上機
-
-
-
 
 18.7.3 內部機制
 
+- 初學者知道 work_struct 中的函數是運行於內核線程的上下文，這就足夠了
+
+- `kernel\workqueue.c`
+
 1. Linux 2.x 的工作隊列創建過程
 
+   - 創建 workqueue 時就會同時創建內核線程
 
+    ![img60](./[第5篇]_嵌入式Linux驅動開發基礎知識/img60.PNG)
 
 2. Linux 4.x 的工作隊列創建過程
 
+   - 內核線程和 workqueue 是分開創建的
+
+    ![img61](./[第5篇]_嵌入式Linux驅動開發基礎知識/img61.PNG)
 
 09_read_key_irq_poll_fasync_block_timer_tasklet_workqueue_new_timer 驅動程序
 
 - [gpio_key_drv.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/09_read_key_irq_poll_fasync_block_timer_tasklet_workqueue_new_timer/gpio_key_drv.c)
 
+```C
+#include <linux/workqueue.h>
 
+struct gpio_key{
+    int gpio;
+    struct gpio_desc *gpiod;
+    int flag;
+    int irq;
+    struct timer_list key_timer;
+    struct tasklet_struct tasklet;
+    struct work_struct work;
+};
+
+static void key_work_func(struct work_struct *work)
+{
+    struct gpio_key *gpio_key = container_of(work, struct gpio_key, work);
+    int val;
+
+    val = gpiod_get_value(gpio_key->gpiod);
+
+    /*#include <asm/current.h> 打印目前線程的PID*/
+    printk("key_work_func: the process is %s pid %d\n",current->comm, current->pid);	
+    printk("key_work_func key %d %d\n", gpio_key->gpio, val);
+}
+
+static irqreturn_t gpio_key_isr(int irq, void *dev_id)
+{
+    struct gpio_key *gpio_key = dev_id;
+    //printk("gpio_key_isr key %d irq happened\n", gpio_key->gpio);
+    //tasklet_schedule(&gpio_key->tasklet);
+    //mod_timer(&gpio_key->key_timer, jiffies + HZ/50);
+    schedule_work(&gpio_key->work);
+    return IRQ_HANDLED;
+}
+
+static int gpio_key_probe(struct platform_device *pdev)
+{
+    /*..............*/
+    INIT_WORK(&gpio_keys_100ask[i].work, key_work_func);
+    /*..............*/
+}
+
+```
 
 09_read_key_irq_poll_fasync_block_timer_tasklet_workqueue_new_timer 應用程序
 
@@ -1752,4 +1829,372 @@ Makefile
 Makefile
 
 - [Makefile](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/09_read_key_irq_poll_fasync_block_timer_tasklet_workqueue_new_timer/Makefile)
+
+<h2 id="20.8">20-8_中斷的線程化處理</h2>
+
+複雜、耗時的事情，盡量使用內核線程來處理
+
+在同一個內核線程，工作隊列中有多個 work，前一個 work 沒處理完會影響後面的 work
+
+解決方法有很多種：
+
+- 自己創建一個內核線程，不跟別的 work 放在一起
+- `threaded irq`，線程化的中斷處理
+
+中斷的處理仍然可以認為分為上半部、下半部。上半部用來處理緊急的事情，下半部用一個內核線程來處理，這個內核線程專用於這個中斷。
+
+![img62](./[第5篇]_嵌入式Linux驅動開發基礎知識/img62.PNG)
+
+- 你可以只提供 thread_fn，系統會為這個函數創建一個內核線程
+
+- 發生中斷時，系統會立刻調用 handler 函數，然後喚醒某個內核線程，內核線程再來執行 thread_fn 函數
+
+
+18.8.1 內核機制
+
+1. 調用request_threaded_irq 後內核的數據結構
+
+    ![img63](./[第5篇]_嵌入式Linux驅動開發基礎知識/img63.PNG)
+
+2. request_threaded_irq
+
+   - `kernel\irq\manage.c`
+   - 創建一個內核線程
+
+    ```C
+    int request_threaded_irq(unsigned int irq, irq_handler_t handler,
+                            irq_handler_t thread_fn, unsigned long irqflags,
+                            const char *devname, void *dev_id)
+    {
+        // 分配、设置一个irqaction 结构体
+        action = kzalloc(sizeof(struct irqaction), GFP_KERNEL);
+        if (!action)
+        return -ENOMEM;
+        action->handler = handler;
+        action->thread_fn = thread_fn;
+        action->flags = irqflags;
+        action->name = devname;
+        action->dev_id = dev_id;
+        retval = __setup_irq(irq, desc, action); // 进一步处理
+    }
+
+    __setup_irq()
+    {
+        /*................*/
+        if (new->thread_fn && !nested) {
+            ret = setup_irq_thread(new, irq, false);
+        /*................*/
+    }
+
+    setup_irq_thread()
+    {
+        /*...............*/
+        if (!secondary) {
+            t = kthread_create(irq_thread, new, "irq/%d-%s", irq, new->name);
+        } else {
+            t = kthread_create(irq_thread, new, "irq/%d-s-%s", irq, new->name);
+            param.sched_priority -= 1;
+        }
+        new->thread = t;
+        /*...............*/
+    }
+    ```
+
+3. 中斷的執行過程
+
+18.8.2 編程、上機
+
+- 調用 request_threaded_irq 函數註冊中斷，調用 free_irq 卸載中斷
+
+- 從前面可知，我們可以提供上半部函數，也可以不提供：
+  - 如果不提供， 內核會提供默認的上半部處理函數，`irq_default_primary_handler`，它是直接返回 `IRQ_WAKE_THREAD`
+  - 如果提供的話，返回值必須是：`IRQ_WAKE_THREAD`，在thread_fn 中，如果中斷被正確處理了，應該返回 `IRQ_HANDLED`。
+
+10_read_key_irq_poll_fasync_block_timer_tasklet_workqueue_threadedirq_new_timer 驅動程序
+
+- [gpio_key_drv.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/10_read_key_irq_poll_fasync_block_timer_tasklet_workqueue_threadedirq_new_timer/gpio_key_drv.c)
+
+```C
+static irqreturn_t gpio_key_isr(int irq, void *dev_id)
+{
+    struct gpio_key *gpio_key = dev_id;
+    //printk("gpio_key_isr key %d irq happened\n", gpio_key->gpio);
+    //tasklet_schedule(&gpio_key->tasklet);
+    //mod_timer(&gpio_key->key_timer, jiffies + HZ/50);
+    //schedule_work(&gpio_key->work);
+    return IRQ_WAKE_THREAD;
+}
+
+static irqreturn_t gpio_key_thread_func(int irq, void *data)
+{
+    struct gpio_key *gpio_key = data;
+    int val;
+
+    val = gpiod_get_value(gpio_key->gpiod);
+
+    printk("gpio_key_thread_func: the process is %s pid %d\n",current->comm, current->pid);	
+    printk("gpio_key_thread_func key %d %d\n", gpio_key->gpio, val);
+
+    return IRQ_HANDLED;
+}
+
+static int gpio_key_probe(struct platform_device *pdev)
+{
+    /*...............*/
+    err = request_threaded_irq(gpio_keys_100ask[i].irq, gpio_key_isr, gpio_key_thread_func, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING, "100ask_gpio_key", &gpio_keys_100ask[i]);
+    /*...............*/
+}
+```
+
+10_read_key_irq_poll_fasync_block_timer_tasklet_workqueue_threadedirq_new_timer 應用程序
+
+- [button_test.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/10_read_key_irq_poll_fasync_block_timer_tasklet_workqueue_threadedirq_new_timer/button_test.c)
+
+Makefile
+
+- [Makefile](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/06_gpio_irq/10_read_key_irq_poll_fasync_block_timer_tasklet_workqueue_threadedirq_new_timer/Makefile)
+
+<h2 id="20.9">20-9_mmap基礎知識</h2>
+
+應用程序和驅動程序之間傳遞數據時，可以通過 read、write 函數進行。這涉及在 用戶態buffer 和 內核態buffer 之間傳數據，如下圖所示：
+
+![img64](./[第5篇]_嵌入式Linux驅動開發基礎知識/img64.PNG)
+
+應用程序不能直接讀寫驅動程序中的 buffer，需要在 用戶態buffer 和 內核態 buffer 之間進行一次數據拷貝。這種方式在數據量比較小時沒什麼問題；但是數據量比較大時效率就太低了。
+
+通過 mmap 實現(memory map)，把內核的 buffer 映射到用戶態，讓APP 在用戶態直接讀寫驅動程序中的 buffer
+
+18.9.1 內存映射現象與數據結構
+
+```C
+/*test.c*/
+
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+int a;
+int main(int argc, char **argv)
+{
+    if (argc != 2)
+    {
+        printf("Usage: %s <number>\n", argv[0]);
+        return -1;
+    }
+    a = strtol(argv[1], NULL, 0);
+    printf("a's address = 0x%lx, a's value = %d\n", &a, a);
+    while (1)
+    {
+        sleep(10);
+    }
+    return 0;
+}
+```
+
+![img65](./[第5篇]_嵌入式Linux驅動開發基礎知識/img65.PNG)
+
+- 分別執行 test 程序 2 次，最後執行ps，可以看到這 2 個程序同時存在，這 2 個程序裡 a 變量的地址相同，但是值不同
+
+- 這裡要引入虛擬地址的概念： CPU 發出的地址是虛擬地址， 它經過
+MMU(Memory Manage Unit，內存管理單元)映射到物理地址上，對於不同進程的同一個虛擬地址，MMU 會把它們映射到不同的物理地址
+
+    ![img66](./[第5篇]_嵌入式Linux驅動開發基礎知識/img66.PNG)
+
+- 有 MMU 的作業系統中，不管是APP或是驅動，要訪問內存的物理地址時都必須先通過MMU轉換虛擬地址
+
+    ![img70](./[第5篇]_嵌入式Linux驅動開發基礎知識/img70.PNG)
+
+- MMU 負責把虛擬地址映射為物理地址，可以執行ps 命令查看進程ID，然後執行 `cat /proc/325/maps` 得到映射關係。
+
+- 每一個 APP 在內核裡都有一個 `tast_struct`，這個結構體中保存有內存信息：`mm_struct`。而虛擬地址、物理地址的映射關係保存在`頁目錄`表中
+
+    ![img67](./[第5篇]_嵌入式Linux驅動開發基礎知識/img67.PNG)
+
+  - 每個 APP 在內核中都有一個 `task_struct` 結構體，它用來描述一個進程；
+  - 每個 APP 都要佔據內存，在 task_struct 中用 `mm_struct` 來管理進程佔用的內存；
+    - 內存有虛擬地址、物理地址，mm_struct 中用 `mmap` 來描述虛擬地址，用 `pgd` 來描述對應的物理地址。
+  - 每個 APP 都有一系列的 VMA：virtual memory area
+    - 比如APP 含有代碼段、數據段、BSS 段、棧等等，還有共享庫。這些單元會保存在內存裡，它們的地址空間不同，權限不同(代碼段是只讀的可運行的、數據段可讀可寫)，內核用一系列的 `vm_area_struct` 來描述它們。
+
+18.9.2 ARM 架構內存映射簡介
+
+- ARM 架構支持一級頁表映射
+  - MMU 根據 CPU 發來的虛擬地址可以找到第 1 個頁表，從第 1 個頁表裡就可以知道這個虛擬地址對應的物理地址。
+  - 一級頁表里地址映射的最小單位是1M
+
+- ARM 架構還支持二級頁表映射
+  - MMU 根據 CPU 發來的虛擬地址先找到第 1 個頁表，從第 1 個頁表裡就可以知道第 2 級頁表在哪裡；再取出第 2 級頁表，從第 2 個頁表裡才能確定這個虛擬地址對應的物理地址。
+  - 二級頁表地址映射的最小單位有4K、1K，Linux 使用 4K。
+
+1. 一級頁表映射過程
+
+   - 一級頁表中每一個表項用來設置 1M 的空間，對於 32 位的系統，虛擬地址空間有4G，4G/1M=4096。所以一級頁表要映射整個 4G 空間的話，需要 4096 個頁表項。
+
+        ```
+        第 0 個頁表項用來表示虛擬地址第 0 個1M(虛擬地址為0～0xFFFFF)對應哪一塊物理內存，
+            並且有一些權限設置；
+        第 1 個頁表項用來表示虛擬地址第 1 個1M(虛擬地址為0x100000～ 0x1FFFFF)對應哪一塊物理內存，
+            並且有一些權限設置；
+        依次類推。
+        ```
+
+   - 地址映射過程：
+
+        ![img68](./[第5篇]_嵌入式Linux驅動開發基礎知識/img68.PNG)
+
+   - 所以 CPU 要訪問虛擬地址 0x12345678 時，實際上訪問的是 0x81045678 的物理地址。
+
+        ![img69](./[第5篇]_嵌入式Linux驅動開發基礎知識/img69.PNG)
+
+2. 二級頁表映射過程 - `可用來映射更小的塊`
+
+    ![img74](./[第5篇]_嵌入式Linux驅動開發基礎知識/img74.PNG)
+
+    ![img71](./[第5篇]_嵌入式Linux驅動開發基礎知識/img71.PNG)
+
+    ![img72](./[第5篇]_嵌入式Linux驅動開發基礎知識/img72.PNG)
+
+    ![img73](./[第5篇]_嵌入式Linux驅動開發基礎知識/img73.PNG)
+
+   - 所以 CPU 要訪問虛擬地址 0x12345678 時，實際上訪問的是 0x81889678 的物理地址
+
+18.9.3 怎麼給 APP 新建一塊內存映射
+
+**1. mmap 調用過程**
+
+- APP 調用mmap 系統函數時，內核就幫我們構造了一個 vm_area_stuct 結構體，表示APP 的一塊虛擬內存空間。裡面含有虛擬地址的地址範圍、權限。
+
+- 你想映射某個內核buffer，你需要得到它的物理地址，引數輸入0(NULL)，將由內核自動配置
+
+- 給 vm_area_struct 和 物理地址 建立 映射關係
+
+ ![img75](./[第5篇]_嵌入式Linux驅動開發基礎知識/img75.PNG)
+
+ ![img76](./[第5篇]_嵌入式Linux驅動開發基礎知識/img76.PNG)
+
+**2. cache 和 buffer**
+
+- [參考 ARM 的 cache 和 寫緩衝器（write buffer）](https://blog.csdn.net/gameit/article/details/13169445)
+
+- 下圖是 CPU 和 內存 之間的關係，有 cache、buffer(寫緩衝器)。
+  - Cache 是一塊高速內存；
+  - 寫緩衝器相當於一個 FIFO，可以把多個寫操作集合起來一次寫入內存。
+
+    ![img77](./[第5篇]_嵌入式Linux驅動開發基礎知識/img77.PNG)
+
+- 程序運行時有 "局部性原理"
+  - 時間局部性：
+    - 在某個時間點訪問了存儲器的特定位置，很可能在一小段時間裡，會反复地訪問這個位置。
+  - 空間局部性：
+    - 訪問了存儲器的特定位置，很可能在不久的將來訪問它附近的位置。
+
+- CPU 的速度非常快，內存的速度相對來說很慢。根據 "局部性原理"，可以引入 cache 加快速度
+
+- 讀取內存 addr 處的數據時
+  - 先看看 cache 中有沒有addr 的數據，如果有就直接從cache 裡返回數據：這被稱為 cache 命中。
+  - 如果 cache 中沒有 addr 的數據，則從內存裡把數據讀入，注意：它不是僅僅讀入一個數據，而是讀入一行數據(cache line)。
+  - 而 CPU 很可能會再次用到這個 addr 的數據，或是會用到它附近的數據，這時就可以快速地從 cache 中獲得數據。
+
+- 寫數據
+  - CPU 要寫數據時，可以直接寫內存，這很慢；也可以先把數據寫入 cache，這很快。
+  - 但是 cache 中的數據終究是要寫入內存的啊，這有 2 種寫策略：
+
+    ![img78](./[第5篇]_嵌入式Linux驅動開發基礎知識/img78.PNG)
+
+    ![img80](./[第5篇]_嵌入式Linux驅動開發基礎知識/img80.PNG)
+
+- 使用寫回功能，可以大幅提高效率。但是要注意 cache 和 內存 中的數據很可能不一致，下面為一些不適合使用 cache 的情況
+  - 操作硬件的暫存器
+  - 顯存(framebuffer)
+  - 直接記憶體存取（Direct Memory Access，DMA）
+
+- 一般RAM會搭配cache來加快速度
+
+- 是否使用 cache、是否使用 buffer，就有 4 種組合(Linux 內核文件
+`arch\arm\include\asm\pgtable-2level.h`)：
+
+    ![img79](./[第5篇]_嵌入式Linux驅動開發基礎知識/img79.PNG)
+
+**3. 驅動程序要做的事**
+
+1. 確定物理地址：使用 (0)NULL，讓內核自動配置
+2. 確定屬性：是否使用cache、buffer
+3. 建立映射關係
+
+
+- 參考Linux 源文件，示例代碼如下：
+
+    ![img81](./[第5篇]_嵌入式Linux驅動開發基礎知識/img81.PNG)
+
+    ![img82](./[第5篇]_嵌入式Linux驅動開發基礎知識/img82.PNG)
+
+<h2 id="20.10">20-10_mmap編程</h2>
+
+APP 編程
+
+- [hello_drv_test.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/07_mmap/hello_drv_test.c)
+
+    ```C
+    buf =  mmap(NULL, 1024*8, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (buf == MAP_FAILED)
+    {
+        printf("can not mmap file /dev/hello\n");
+        return -1;
+    }
+    ```
+
+驅動編程
+
+- [hello_drv.c](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/07_mmap/hello_drv.c)
+
+    ```C
+    static char *kernel_buf;
+    static int bufsiz = 1024*8;
+
+    static int hello_drv_mmap(struct file *file, struct vm_area_struct *vma)
+    {
+        /* 获得物理地址 */
+        unsigned long phy = virt_to_phys(kernel_buf);
+
+        /* 设置属性: cache, buffer */
+        vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+
+        /* map */
+        if (remap_pfn_range(vma, vma->vm_start, phy >> PAGE_SHIFT,
+                    vma->vm_end - vma->vm_start, vma->vm_page_prot)) {
+            printk("mmap remap_pfn_range failed\n");
+            return -ENOBUFS;
+        }
+
+        return 0;
+    }
+
+    static struct file_operations hello_drv = {
+        .owner	 = THIS_MODULE,
+        .open    = hello_drv_open,
+        .read    = hello_drv_read,
+        .write   = hello_drv_write,
+        .release = hello_drv_close,
+        .mmap    = hello_drv_mmap,
+    };
+
+    static int __init hello_init(void)
+    {
+        /*..................*/
+
+        kernel_buf = kmalloc(bufsiz, GFP_KERNEL);
+        strcpy(kernel_buf, "old");
+
+        /*.................*/
+    }
+
+    static void __exit hello_exit(void)
+    {
+        /*..................*/
+        kfree(kernel_buf);
+    }
+    ```
+
+Makefile
+
+- [Makefile](./[第5篇]_嵌入式Linux驅動開發基礎知識/source/07_mmap/Makefile)
 
