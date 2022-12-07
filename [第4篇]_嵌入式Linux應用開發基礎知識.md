@@ -23,6 +23,7 @@
   - [3-7_通用Makefile的解析](#3.7)
   - [3-8_簡介buildroot](#3.8)
   - [3-9_靜動態庫](#3.9)
+  - [3-10_參考範例](#3.10)
 - [04_文件IO](#4)
   - [4-1_文件IO_讀寫文件](#4.1)
   - [4-2_文件IO_內核接口](#4.2)
@@ -1466,6 +1467,20 @@ Buildroot是Linux平臺上一個構建嵌入式Linux系統的框架。
    - 保留.h與.a即可使用相關function 
 
    - 使用相關庫編譯出執行檔 : `gcc -o main main.c libadd.so`
+
+<h2 id="3.10">3-10_參考範例</h2>
+
+[MakefileTest](./[第4篇]_嵌入式Linux應用開發基礎知識/code/MakefileTest/Makefile)
+
+[TeraSillc_radar_appTest](./[第4篇]_嵌入式Linux應用開發基礎知識/code/TeraSillc_radar_appTest/Makefile)
+
+[libTest](./[第4篇]_嵌入式Linux應用開發基礎知識/code/libTest/Makefile)
+
+[cecbhlibTest](./[第4篇]_嵌入式Linux應用開發基礎知識/code/cecbhlibTest/Makefile)
+
+[cvTest](./[第4篇]_嵌入式Linux應用開發基礎知識/code/cvTest/Makefile)
+
+[Kernel_Read_Test](./[第4篇]_嵌入式Linux應用開發基礎知識/code/Kernel_Read_Test/Makefile)
 
 <h1 id="4">04_文件IO</h1>
 
