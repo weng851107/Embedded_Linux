@@ -26,6 +26,7 @@ If there is related infringement or violation of related regulations, please con
     - [如何進行轉換](#1.8.5)
     - [從軟體的角度理解端模式](#1.8.6)
     - [從系統的角度理解端模式](#1.8.7)
+  - [x64 與 x86](#1.9)
 - [快速入門](#2)
 - [驅動大全](#3)
 
@@ -645,6 +646,32 @@ void main(){
    - 小端模式下16位匯流排的msb是第15位，MSB是資料匯流排的第15\~7位，lsb是第0位，LSB是7\~0欄位。
    - 大端模式下8位資料匯流排的msb是第0位，MSB是資料匯流排的第0\~7的欄位；而lsb是第7位，LSB是第0\~7欄位。
    - 小端模式下8位匯流排的msb是第7位，MSB是資料匯流排的第7\~0位，lsb是第0位，LSB是7\~0欄位。
+
+<h2 id="1.9">x64 與 x86</h2>
+
+### [64 位元的 CPU](https://wanker742126.neocities.org/new/win64asm/w64asm_ch00.html)
+
+- x64 架構的 CPU 是屬於 64 位元，包含了 16 個 64 位元的通用暫存器 ( general-purpose registers )，這 16 個暫存器名稱分別是 RAX、RBX、RCX、RDX、RBP、RSP、RSI、RDI、R8、R9、R10、R11、R12、R13、R14、R15。很明顯的，後面的八個暫存器，R8、R9、R10、R11、R12、R13、R14、R15，是新增的；
+- 而前面的八個暫存器，RAX、RBX、RCX、RDX、RBP、RSP、RSI、RDI，是把原有的 32 位元加以擴充而成，RAX、RBX…等的「R」是暫存器 ( register ) 的意思。
+
+   ![CPU_img00](./image/CPU/CPU_img00.PNG)
+
+### [32位元、64位元 - CPU 、作業系統、應用軟體](http://wangwangtc.blogspot.com/2017/07/3264-cpu.html)
+
+![CPU_img01](./image/CPU/CPU_img01.PNG)
+
+### Linux 是64位元還是32位元
+
+[如何檢查 Linux 作業系統是 32 位元還是 64 位元？](https://blog.gtwang.org/linux/how-to-check-linux-arch-32bits-64bits/)
+
+1. `uname -m`
+
+   - 32 位元的系統，就會顯示 i686 或 i386
+   - 64 位元的系統就會顯示 x86_64
+
+2. `uname -a`
+
+   > Linux steteo1 3.11.0-19-generic #33-Ubuntu SMP Tue Mar 11 18:48:34 UTC 2014 x86_64 x86_64 x86_64 GNU/Linux
 
 <h1 id="2">快速入門</h1>
 
