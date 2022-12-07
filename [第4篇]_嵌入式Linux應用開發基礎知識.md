@@ -8,6 +8,7 @@
   - [2-1_GCC編譯過程](#2.1)
   - [2-2_GCC常用選項](#2.2)
 - [03_Makefile](#3)
+  - [3-0_關於gcc、make和CMake的區別](#3.0)
   - [3-1_Makefile要達成的效果](#3.1)
   - [3-2_Makefile的引入與規則](#3.2)
   - [3-3_Makefile的語法](#3.3)
@@ -21,6 +22,7 @@
     - [四、怎麼使用這套Makefile](#3.6.4)
   - [3-7_通用Makefile的解析](#3.7)
   - [3-8_簡介buildroot](#3.8)
+  - [3-9_靜動態庫](#3.9)
 - [04_文件IO](#4)
   - [4-1_文件IO_讀寫文件](#4.1)
   - [4-2_文件IO_內核接口](#4.2)
@@ -451,6 +453,17 @@ gcc -Wall -c main.c
 ![img10](./[第4篇]_嵌入式Linux應用開發基礎知識/img10.PNG)
 
 <h1 id="3">03_Makefile</h1>
+
+[Makefile學習教程: 跟我一起寫 Makefile](https://blog.xuite.net/tzeng015/twblog/113272267-Makefile%E5%AD%B8%E7%BF%92%E6%95%99%E7%A8%8B%3A+%E8%B7%9F%E6%88%91%E4%B8%80%E8%B5%B7%E5%AF%AB+Makefile)
+
+<h2 id="3.0">3-0_關於gcc、make和CMake的區別</h2>
+
+https://www.cnblogs.com/xuelisheng/p/9988626.html
+
+- CMake是一種跨平台編譯工具，比make更為高級，使用起來要方便得多。 CMake主要是編寫CMakeLists.txt文件，然後用cmake命令將CMakeLists.txt文件轉化為make所需要的makefile文件，最後用make命令編譯源碼生成可執行程序或共享庫（so(shared object)）.它的作用和qt的qmake是相似的。
+- gcc是GNU Compiler Collection（就是GNU編譯器套件），也可以簡單認為是編譯器
+- make工具可以看成是一個智能的批處理工具，它本身並沒有編譯和鏈接的功能，而是用類似於批處理的方式—通過調用makefile文件中用戶指定的命令來進行編譯和鏈接的。
+- cmake是make maker
 
 <h2 id="3.1">3-1_Makefile要達成的效果</h2>
 
@@ -1433,6 +1446,26 @@ Buildroot是Linux平臺上一個構建嵌入式Linux系統的框架。
 ### buildroot 的目錄結構, 工作原理, 與更進一步資訊
 
 [https://www.twblogs.net/a/5bf5cc22bd9eee37a1434c76#:~:text=2017.02.9.tar.gz-,1.2%20buildroot%20%E7%9A%84%E7%9B%AE%E9%8C%84%E7%B5%90%E6%A7%8B,-buildroot/package/%EF%BC%9A%E4%B8%8B%E9%9D%A2]
+
+<h2 id="3.9">3-9_靜動態庫</h2>
+
+1. 靜態庫(static library) libxxx.a
+
+   - 生成.o檔 : `gcc xxx.c -c -o xxx.o`
+
+   - 生成.a檔 : `ar -cr libxxx.a xxx.o`
+
+   - 保留.h與.a即可使用相關function 
+
+   - 使用相關庫編譯出執行檔 : `gcc -o main main.c libadd.a`
+
+2. 動態庫(dynamic library) libxxx.so
+
+   - 生成.so檔 : `gcc xxx.c -shared -fPIC -o libxxx.so`
+
+   - 保留.h與.a即可使用相關function 
+
+   - 使用相關庫編譯出執行檔 : `gcc -o main main.c libadd.so`
 
 <h1 id="4">04_文件IO</h1>
 
