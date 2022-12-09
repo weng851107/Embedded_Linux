@@ -27,8 +27,35 @@ If there is related infringement or violation of related regulations, please con
     - [從軟體的角度理解端模式](#1.8.6)
     - [從系統的角度理解端模式](#1.8.7)
   - [x64 與 x86](#1.9)
-- [快速入門](#2)
-- [驅動大全](#3)
+  - [段錯誤(Segmentation Fault)](#1.10)
+  - [操作硬體方式](#1.11)
+  - [查詢Linux發行版本與核心版本](#1.12)
+  - [Linux磁碟管理](#1.13)
+    - [fdisk (狀態, 分割, 格式化, 掛載)](#1.13.1)
+    - [使用操作(df, mount, du)](#1.13.2)
+    - [linux掛載SD卡](#1.13.3)
+  - [Image Sensor](#1.14)
+    - [Camera 工作原理介紹](#1.14.1)
+    - [Camera 設備組成](#1.14.2)
+    - [YCbCr 空間色彩模型](#1.14.3)
+    - [攝像頭接口分類 (DVP、MIPI和usb)](#1.14.4)
+  - [Audio](#1.15)
+    - [關於pulseaudio和alsa](#1.15.1)
+    - [linux下查看音频設備](#1.15.2)
+    - [amixer修改與查看codec register](#1.15.3)
+    - [聲卡接口Line in、Line out、Mic in和Speak out](#1.15.4)
+    - [Output interfaces of MEMS microphones (Amic & Dmic)](#1.15.5)
+      - [A-mic](#1.15.5.1)
+      - [D-mic](#1.15.5.2)
+    - [Noun Definition](#1.15.6)
+- [Linux Kernel相關知識](#2)
+  - [基本系統數據類型](#2.1)
+  - [取得kernel log的方式](#2.2)
+  - [User 跟 Kernel溝通有幾種](#2.3)
+  - [Linux kernel coding style](#2.4)
+  - [Linux內核開發工具](#2.5)
+- [快速入門](#3)
+- [驅動大全](#4)
 
 
 <h1 id="0">Note</h1>
@@ -673,7 +700,752 @@ void main(){
 
    > Linux steteo1 3.11.0-19-generic #33-Ubuntu SMP Tue Mar 11 18:48:34 UTC 2014 x86_64 x86_64 x86_64 GNU/Linux
 
-<h1 id="2">快速入門</h1>
+<h2 id="1.10">段錯誤(Segmentation Fault)</h2>
+
+段錯誤是指訪問的記憶體超出了系統給這個程式所設定的記憶體空間
+
+- 訪問了不存在的記憶體地址
+- 訪問了系統保護的記憶體地址
+- 訪問了只讀的記憶體地址等等
+
+<h2 id="1.11">操作硬體方式</h2>
+
+1. 讀/寫（read/write）/dev/xxx
+2. 映射（map）操作
+3. I/O控制(ioctl)
+
+<h2 id="1.12">查詢Linux發行版本與核心版本</h2>
+
+https://caloskao.org/linux-unix-get-distribution-and-kernel-version/
+
+1. `uname -mrs` (Linux / BSD)：
+
+   在 Linux 與 BSD 的發行版都可使用，在 BSD 系統底下可直接查看發行版本與核心版本，而在 Linux 系統底下僅能查看核心版本，發行版本需透過其它指令得知。
+
+   ```Text
+   Linux 4.15.0-23-generic x86_64
+   FreeBSD 11.1-RELEASE amd64
+   ```
+
+2. `cat /etc/os-release` (Linux)：
+
+   僅能在 Linux 發行版下使用，帶出的發行版資訊很完整，但不含核心版本資訊。
+
+   ```Text
+   NAME="Ubuntu"
+   VERSION="18.04 LTS (Bionic Beaver)"
+   ID=ubuntu
+   ID_LIKE=debian
+   PRETTY_NAME="Ubuntu 18.04 LTS"
+   VERSION_ID="18.04"
+   HOME_URL="https://www.ubuntu.com/"
+   SUPPORT_URL="https://help.ubuntu.com/"
+   BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+   PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+   VERSION_CODENAME=bionic
+   UBUNTU_CODENAME=bionic
+   ```
+
+<h2 id="1.13">Linux磁碟管理</h2>
+
+
+- 由於 MBR 分割表不支援超過 2TB 的磁碟，如果您的硬碟大小超過 2TB，就無法使用 `fdisk` 分割硬碟，請改用 `parted` 以 GPT 的方式分割
+
+    [Linux 的 Parted 指令教學](https://blog.gtwang.org/linux/parted-command-to-create-resize-rescue-linux-disk-partitions/)
+
+<h3 id="1.13.1">fdisk (狀態, 分割, 格式化, 掛載)</h3>
+
+#### 顯示出目前硬碟的掛載狀況
+
+- 剛剛裝上去的新硬碟在這裡是看不到的，因為我們都還沒開始分割
+
+    ```Shell
+    $ df -h
+
+    Filesystem            Size  Used Avail Use% Mounted on
+    /dev/sda1             440G   46G  372G  12% /
+    none                  5.9G  260K  5.9G   1% /dev
+    none                  5.9G     0  5.9G   0% /dev/shm
+    none                  5.9G   64K  5.9G   1% /var/run
+    none                  5.9G     0  5.9G   0% /var/lock
+    none                  5.9G     0  5.9G   0% /lib/init/rw
+    /dev/sdb1             459G  198M  435G   1% /data1
+    ```
+
+- 接著在看看 /dev 下面所有的硬碟情況
+
+    ```Shell
+    $ ls /dev/[sh]d*
+
+    /dev/sda  /dev/sda1  /dev/sda2  /dev/sda5  /dev/sdb  /dev/sdb1  /dev/sdc
+    ```
+
+- 這樣一比較就知道新的硬碟是 /dev/sdc 這顆，再用 fdisk 確認一下
+    --> 看起來沒問題，沒有任何磁碟分割表的資訊
+
+    ```Shell
+    $ fdisk -l /dev/sdc
+
+    Disk /dev/sdc: 2000.4 GB, 2000398934016 bytes
+    255 heads, 63 sectors/track, 243201 cylinders
+    Units = cylinders of 16065 * 512 = 8225280 bytes
+    Sector size (logical/physical): 512 bytes / 512 bytes
+    I/O size (minimum/optimal): 512 bytes / 512 bytes
+    Disk identifier: 0x40bab849
+    Device Boot      Start         End      Blocks   Id  System
+    ```
+
+#### 硬碟分割
+
+- 接著開始分割，首先進入 fdisk，fdisk 是一個互動模式的分割工具，輸入 m 再按 Enter 可以顯示各種指令的說明：
+
+    ```Shell
+    $ fdisk /dev/sdc
+
+    WARNING: DOS-compatible mode is deprecated. It’s strongly recommended to
+            switch off the mode (command ‘c’) and change display units to
+            sectors (command ‘u’).
+    Command (m for help): m
+    Command action
+    a   toggle a bootable flag
+    b   edit bsd disklabel
+    c   toggle the dos compatibility flag
+    d   delete a partition
+    l   list known partition types
+    m   print this menu
+    n   add a new partition
+    o   create a new empty DOS partition table
+    p   print the partition table
+    q   quit without saving changes
+    s   create a new empty Sun disklabel
+    t   change a partition’s system id
+    u   change display/entry units
+    v   verify the partition table
+    w   write table to disk and exit
+    x   extra functionality (experts only)
+    Command (m for help): 
+    ```
+
+- 新增一個分割區，步驟如下
+
+    ```Text
+    1. 新增分割區，輸入 n 按 Enter。
+    2. 選擇要建立 extended 還是 primary partition，因為我的硬碟全部只要一個分割區，所以我選 primary，輸入 p 按 Enter。
+    3. 選擇 Partition number，primary 分割區最多可以有四個，隨便選都可以，不過建議選 1，免得以後看起來很奇怪，
+    輸入 1 按 Enter。
+    4. 輸入開始的 cylinder，用預設值就可以了，直接按 Enter。
+    5. 輸入結束的 cylinder，若是要用最大的容量，就直接按 Enter，若是要指定分割區的大小，就用 +size{K,M,G} 的形式指定，
+    例如指定為 100G 的大小就輸入 +100G 再按 Enter。
+    6. 最後將分割表寫入硬碟，輸入 w 再按 Enter。
+    ```
+
+    ```Shell
+    Command (m for help): n
+    Command action
+    e   extended
+    p   primary partition (1-4)
+    p
+    Partition number (1-4): 1
+    First cylinder (1-243201, default 1):
+    Using default value 1
+    Last cylinder, +cylinders or +size{K,M,G} (1-243201, default 243201):
+    Using default value 243201
+    Command (m for help): w
+    The partition table has been altered!
+    Calling ioctl() to re-read partition table.
+    Syncing disks.
+    ```
+
+- 離開 fdisk 就輸入 q 按 Enter 就可以
+
+- 再用 fdisk 確認分割區 --> 最下面一行就是新的分割資訊，看起來沒什麼問題
+
+    ```Shell
+    $ fdisk -l /dev/sdc
+
+    Disk /dev/sdc: 2000.4 GB, 2000398934016 bytes
+    255 heads, 63 sectors/track, 243201 cylinders
+    Units = cylinders of 16065 * 512 = 8225280 bytes
+    Sector size (logical/physical): 512 bytes / 512 bytes
+    I/O size (minimum/optimal): 512 bytes / 512 bytes
+    Disk identifier: 0x40bab849
+    Device Boot      Start         End      Blocks   Id  System
+    /dev/sdc1               1      243201  1953512001   83  Linux
+    ```
+
+#### 格式化（Format）硬碟
+
+- Linux 下格式化就用 `mkfs` 這個指令就可以，`-t` 選項可以指定檔案系統
+
+    ```Shell
+    $ mkfs -t ext4 /dev/sdc1
+
+    mke2fs 1.41.11 (14-Mar-2010)
+    Filesystem label=
+    OS type: Linux
+    Block size=4096 (log=2)
+    Fragment size=4096 (log=2)
+    Stride=0 blocks, Stripe width=0 blocks
+    122101760 inodes, 488378000 blocks
+    24418900 blocks (5.00%) reserved for the super user
+    First data block=0
+    Maximum filesystem blocks=4294967296
+    14905 block groups
+    32768 blocks per group, 32768 fragments per group
+    8192 inodes per group
+    Superblock backups stored on blocks:
+    32768, 98304, 163840, 229376, 294912, 819200, 884736, 1605632, 2654208,
+    4096000, 7962624, 11239424, 20480000, 23887872, 71663616, 78675968,
+    102400000, 214990848
+    Writing inode tables: done                          
+    Creating journal (32768 blocks): done
+    Writing superblocks and filesystem accounting information: done
+    This filesystem will be automatically checked every 32 mounts or
+    180 days, whichever comes first.  Use tune2fs -c or -i to override.
+    ```
+
+#### 掛載（mount）硬碟
+
+- 在 Linux 下面的磁碟掛載設定都是寫在 `/etc/fstab` 中
+
+- 傳統的寫法是使用 /dev/sda1 這樣的方式指定磁碟，但是若是當磁碟更換安裝的順序時，原本的 /dev/sda1 有可能就會變成 /dev/sdb1，有時候光是分清楚哪顆是哪顆就夠頭痛的了
+
+- 現在新的方式都是使用 **UUID** 來指定磁碟的，所以 /etc/fstab 看起來會像這樣：
+
+    ```Shell
+    proc            /proc           proc    nodev,noexec,nosuid 0       0
+    UUID=684530e1-df5c-48d7-b3e4-eb0d47054877 /               ext4    errors=remount-ro 0       1
+    UUID=35ddf35e-87de-4ab0-88d1-2a654d36b19a none            swap    sw              0       0
+    UUID=9746f325-1c82-4c04-b447-b5c596eea6c1 /data1          ext4    defaults        0       2
+    ```
+
+- 每一顆硬碟都可不同的 UUID，使用 UUID 來指定磁碟就不會因為安裝的順序不同而產生變化，這樣做的好處是若是當磁碟常常要拔來拔去時，系統管理者不用再去更改 fstab 的設定，系統會自動尋找對應的 UUID 來掛載
+
+- 利用 `blkid` 這個指令，它可以列出所有磁碟的 UUID
+
+    ```Shell
+    $ sudo blkid
+
+    /dev/sda1: UUID=”684530e1-df5c-48d7-b3e4-eb0d47054877″ TYPE=”ext4″
+    /dev/sda5: UUID=”35ddf35e-87de-4ab0-88d1-2a654d36b19a” TYPE=”swap”
+    /dev/sdb1: UUID=”9746f325-1c82-4c04-b447-b5c596eea6c1″ TYPE=”ext4″
+    /dev/sdc1: UUID=”146d3bb3-e351-45c8-ac84-42534ce51d29″ TYPE=”ext4″ 
+    ```
+
+- 接著把新的硬碟資訊寫進 /etc/fstab 中
+
+    ```Shell
+    UUID=146d3bb3-e351-45c8-ac84-42534ce51d29 /data2          ext4    defaults        0       
+    ```
+
+- 下次重開機時，系統就會把新的硬碟掛載至 /data2，若要馬上測試掛載硬碟設定是否正確，可以使用 `mount`，再用 `df -h` 確認一下有沒有問題
+
+    ```Shell
+    $ mount /data2
+    ```
+
+<h3 id="1.13.2">使用操作(df, mount, du)</h3>
+
+**partition information**
+
+```Shell
+$ cat /proc/partitions
+major     minor  blocks  name
+
+   1        0      65536 ram0
+ 179        0    7634944 mmcblk0
+ 179        1        128 mmcblk0p1
+ 179        2       1024 mmcblk0p2
+ 179        3        896 mmcblk0p3
+ 179        4       1024 mmcblk0p4
+ 179        5      16384 mmcblk0p5
+ 179        6      16384 mmcblk0p6
+ 179        7     491520 mmcblk0p7
+ 179        8      81920 mmcblk0p8
+ 179        9     819200 mmcblk0p9
+ 179       10    6206464 mmcblk0p10
+```
+
+- kernel log會顯示partition的資訊
+
+    ```Shell
+    [    1.135323] mmc0: new HS200 MMC card at address 0001
+    [    1.141686] mmcblk0: mmc0:0001 H8G4a2 7.28 GiB
+    [    1.147191] mmcblk0boot0: mmc0:0001 H8G4a2 partition 1 4.00 MiB
+    [    1.154067] mmcblk0boot1: mmc0:0001 H8G4a2 partition 2 4.00 MiB
+    [    1.160106] mmcblk0rpmb: mmc0:0001 H8G4a2 partition 3 4.00 MiB, chardev (250:0)
+    [    1.170664]  (bst): 0x0000000000000000, 0x0000000000020000
+    [    1.176150]  (bld): 0x0000000000020000, 0x0000000000100000
+    [    1.181630]  (ptb): 0x0000000000120000, 0x00000000000e0000
+    [    1.187111]  (atf): 0x0000000000200000, 0x0000000000100000
+    [    1.192591]  (pba): 0x0000000000300000, 0x0000000001000000
+    [    1.198074]  (pri): 0x0000000001300000, 0x0000000001000000
+    [    1.203555]  (lnx): 0x0000000002300000, 0x000000001e000000
+    [    1.209036]  (add): 0x0000000020300000, 0x0000000005000000
+    [    1.214522]  (adc): 0x0000000025300000, 0x0000000032000000
+    [    1.220000]  (raw): 0x0000000057300000, 0x000000017ad00000
+    [    1.225474]  mmcblk0: p1(bst) p2(bld) p3(ptb) p4(atf) p5(pba) p6(pri) p7(lnx) p8(add) p9(adc) p10(raw)
+    ```
+
+**df**
+
+```Shell
+$ df
+Filesystem                Size      Used Available Use% Mounted on
+/dev/root               448.7M    419.9M      1.9M 100% /
+devtmpfs                 88.5M         0     88.5M   0% /dev
+tmpfs                   496.7M         0    496.7M   0% /dev/shm
+tmpfs                   198.7M    288.0K    198.4M   0% /run
+tmpfs                   496.7M     12.0K    496.7M   0% /tmp
+tmpfs                   496.7M      4.0M    492.7M   1% /var/log
+tmpfs                   496.7M         0    496.7M   0% /var/tmp
+/dev/mmcblk0p7          787.4M    104.0K    747.3M   0% /sdcard
+/dev/mmcblk0p9          787.4M    104.0K    747.3M   0% /sdcard
+/dev/mmcblk0p9          787.4M    104.0K    747.3M   0% /adc
+tmpfs                    99.3M         0     99.3M   0% /run/user/0
+```
+
+**mount**
+
+- 得知目前掛載資訊
+
+    ```Shell
+    $ mount
+    /dev/root on / type ext4 (rw,relatime,errors=remount-ro)
+    devtmpfs on /dev type devtmpfs (rw,relatime,size=90652k,nr_inodes=22663,mode=755)
+    sysfs on /sys type sysfs (rw,nosuid,nodev,noexec,relatime)
+    proc on /proc type proc (rw,nosuid,nodev,noexec,relatime)
+    tmpfs on /dev/shm type tmpfs (rw,nosuid,nodev)
+    devpts on /dev/pts type devpts (rw,nosuid,noexec,relatime,gid=5,mode=620,ptmxmode=000)
+    tmpfs on /run type tmpfs (rw,nosuid,nodev,size=203444k,nr_inodes=819200,mode=755)
+    cgroup2 on /sys/fs/cgroup type cgroup2 (rw,nosuid,nodev,noexec,relatime,nsdelegate)
+    mqueue on /dev/mqueue type mqueue (rw,nosuid,nodev,noexec,relatime)
+    hugetlbfs on /dev/hugepages type hugetlbfs (rw,relatime,pagesize=2M)
+    debugfs on /sys/kernel/debug type debugfs (rw,nosuid,nodev,noexec,relatime)
+    tmpfs on /tmp type tmpfs (rw,nosuid,nodev,size=508608k,nr_inodes=409600)
+    tmpfs on /var/log type tmpfs (rw,relatime)
+    tmpfs on /var/tmp type tmpfs (rw,relatime)
+    configfs on /sys/kernel/config type configfs (rw,nosuid,nodev,noexec,relatime)
+    /dev/mmcblk0p7 on /sdcard type ext4 (rw,noatime,nodiratime,errors=remount-ro)
+    /dev/mmcblk0p9 on /sdcard type ext2 (rw,sync,noatime,nodiratime,errors=remount-ro)
+    /dev/mmcblk0p9 on /adc type ext2 (rw,sync,relatime,errors=remount-ro)
+    tmpfs on /run/user/0 type tmpfs (rw,nosuid,nodev,relatime,size=101720k,nr_inodes=25430,mode=700)
+    ```
+
+**du**
+
+- 檢視檔案與目錄的使用空間狀態
+
+    ```Shell
+    $ du --help
+    BusyBox v1.31.1 (2020-08-04 08:23:01 CST) multi-call binary.
+
+    Usage: du [-aHLdclsxhmk] [FILE]...
+
+    Summarize disk space used for each FILE and/or directory
+
+        -a      Show file sizes too
+        -L      Follow all symlinks
+        -H      Follow symlinks on command line
+        -d N    Limit output to directories (and files with -a) of depth < N
+        -c      Show grand total
+        -l      Count sizes many times if hard linked
+        -s      Display only a total for each argument
+        -x      Skip directories on different filesystems
+        -h      Sizes in human readable format (e.g., 1K 243M 2G)
+        -m      Sizes in megabytes
+        -k      Sizes in kilobytes (default)
+    ```
+
+  - `du ` 在當前目錄、子目錄各自檔案大小與總量大小
+  - `du -a` 列出所有資料夾與檔案大小
+  - `du -ah` 增加易讀性並列出所有資料夾與檔案大小
+  - `du -sh` 增加易讀性並僅看當前目錄檔案總量大小
+
+<h3 id="1.13.3">linux掛載SD卡</h3>
+
+https://www.twblogs.net/a/5c22690ebd9eee16b4a77d0e
+
+（1）通過 `fdisk -l` 命令確認板子上的linux系統是否識別SD卡
+
+```bash
+$ fdisk -l
+
+Disk /dev/mtdblock0: 1 MB, 1179648 bytes
+255 heads, 63 sectors/track, 0 cylinders
+Units = cylinders of 16065 * 512 = 8225280 bytes
+
+Disk /dev/mtdblock0 doesn't contain a valid partition table
+Disk /dev/mmcblk0: 1967 MB, 1967128576 bytes
+40 heads, 56 sectors/track, 1715 cylinders
+Units = cylinders of 2240 * 512 = 1146880 bytes
+
+Device Boot Start End Blocks Id System
+/dev/mmcblk0p1 * 192 1716 1707008 6 FAT16
+```
+
+（2）確保/mnt存在
+
+- `cat /proc/partitions` 看看到底有沒有mmc相關的分區
+
+    ```bash
+    $ cat /proc/partitions
+
+    major minor #blocks name
+
+    31 0 1152 mtdblock0
+    31 1 768 mtdblock1
+    31 2 768 mtdblock2
+    31 3 7040 mtdblock3
+    31 4 121344 mtdblock4
+    179 0 1921024 mmcblk0
+    179 1 1707008 mmcblk0p1
+    ```
+
+- 沒有這兩個分區(mmcblk0, mmcblk0p1)，就說明SD卡驅動沒有移植成功
+
+- 內核選項裡支持
+
+    ```bash
+    device deivers-》mmc/sd card support ->Samsung s3c sd/mmc card interface support
+    ```
+
+（3）掛載SD卡
+
+```bash
+mount /dev/mmcblk0p1 /mnt/mmc
+mount -t vfat /dev/mmcblk0p1 /mnt/mmc
+```
+
+（4）卸載SD卡
+
+- 當前目錄不能是/mnt，否則會出現 "umount can't umount /mnt device or resource busy" 的錯誤提示信息。
+
+```bash
+umount /mnt/mmc
+```
+
+（5）Linux 如何上電掛載SD卡
+
+編輯/etc/init.d/目錄下的rcS文件：vi /etc/init.d/rcS
+在裏面加入一行：mount -t vfat /dev/mmcblk0p1 /mmc
+這樣上電後開發板就會自動掛載SD卡到主目錄的mmc文件夾
+
+<h2 id="1.14">Image Sensor</h2>
+
+<h3 id="1.14.1">Camera 工作原理介紹</h3>
+
+- **外部光線**穿過 **lens** 後， 經過 **color filter 濾波**後照射到 **Sensor 面**上， Sensor 將從 lens 上傳導過來的**光線轉換爲電信號**，再通過內部的 **AD 轉換**爲數字信號。如果 Sensor 沒有集 成 DSP，則通過 DVP 的方式傳輸到 baseband，此時的數據格式是 RAW DATA。如果集成了 **DSP**， RAW DATA 數據經過 AWB、 則 color matrix、 lens shading、 gamma、 sharpness、 AE 和 de-noise 處理，後輸出 **YUV 或者 RGB** 格式的數據。最後會由 CPU 送到 **framebuffer** 中進行顯示，這樣我們就看到 camera 拍攝到的景象 了。
+
+<h3 id="1.14.2">Camera 設備組成</h3>
+
+**1.  lens（鏡頭）**：
+
+- 分有塑膠透鏡（Plastic)和玻璃透鏡(Glass)，通常鏡頭結構有：1P,2P,1G1P,1G3P,2G2P,4G 等。
+
+**2. sensor（圖像傳感器）**：
+
+- **CCD（Charge Coupled Device）即電荷耦合器件的縮寫** 和 **CMOS（Complementary Metal-Oxide Semiconductor）互補金屬氧化物半導體**
+  - CCD傳感器，電荷信號先傳送，後放大，再A/D，成像質量靈敏度高、分辨率好、噪聲小；處理速度慢；造價高，工藝複雜。
+  - CMOS傳感器，電荷信號先放大，後A/D，再傳送；成像質量靈敏度低、噪聲明顯；處理速度快；造價低，工藝簡單。
+
+- Sensor 將從 lens 上傳導過來的**光線轉換爲電信號**， 再通過內部的 **AD 轉換爲數字信號**。
+
+- 由於 Sensor 的每個 pixel 只能感光 R 光或者 B 光或者 G 光， 因此每個像素此時存貯的是單色的， 我們稱之爲 **RAW DATA** 數據。 要想將每個像素的 RAW DATA 數據還原成三基色，就需要 **ISP** 來處理。 
+
+**3. ISP（圖像信號處理）**： 
+
+- 主要完成數字圖像的處理工作，把 sensor 採集到的**原始數據轉換爲顯示支持的格式**。 
+
+**4. CAMIF（camera 控制器）**： 
+
+- 芯片上的 camera 接口電路，對設備進行控制，接收 sensor 採集的數據交給 CPU，並送入 LCD 進行顯示。
+
+<h3 id="1.14.3">YCbCr 空間色彩模型</h3>
+
+- **YUV**：中“Y”表示明亮度（Luminance或Luma），也就是灰階值；而“U”和“V” 表示的則是色度（Chrominance或Chroma），作用是描述影像色彩及飽和度，用於指定像素的顏色。
+
+- **RGB**(R,G,B 都是 8bit unsigned) 模型，每個像素點需要 8x3=24 bits。三原色所構成的向量空間無法對影像強度(亮度)做處理，例如柔和化、銳利化等等。同時，由 RGB 構成的影像檔案也在傳輸時佔用較大頻寬、儲存時佔用較多的記憶體。
+
+- **YCbCr** 是 YUV 經過縮放和偏移的翻版。其中 Y 與 YUV 中的 Y 含義一致，Cb，Cr 同樣都指色度(色彩濃度)，色度通常表示為兩個色差分量，Cb是藍色色度，Cr 是紅色色度
+
+- 在YUV 家族中，YCbCr 是在計算機系統中應用最多的成員，其應用領域很廣泛，**JPEG**、**MPEG**均採用此格式。一般人們所講的YUV大多是指YCbCr。
+
+**- YCbCr 與 RGB 轉換：**
+
+$ Y = 0.299 R + 0.578 G + 0.114 B (由此式亦可得知人眼對綠色最敏感喔!) $
+$ Cb = 0.564 (B - Y) $
+$ Cr = 0.713 (R - Y) $
+
+$ R = Y + 1.402 Cr $
+$ G = Y – 0.344 Cb – 0.714 Cr $
+$ B = Y + 1.772 Cb $
+
+**- Cb & Cr 色彩濃度圖：**
+
+![Cam_img01.PNG](./image/ImageSensor/Cam_img01.PNG)
+
+**- YCbCr 取樣方式4:4:4 vs 4:2:2 vs 4:2:0**
+
+- 開頭第一個數字代表的是區域的寬度〈通常為4〉，後兩碼數字都和色度有關，分別代表了水平與垂直的數值
+
+    ![Cam_img00.PNG](./image/ImageSensor/Cam_img00.PNG)
+
+- RGB每pixel使用的24 bits數(8 bits (R) + 8 bits (G) + 8 bits (B))
+
+**1. 4:4:4** 
+
+- 格式沒有經過壓縮抽樣，用於呈現完整亮度與色度
+
+- YCbCr 4:4:4 每pixel使用：8 bits (Y) + 8 bits (Cb) + 8 bits (Cr) = 24 bits
+
+- 存儲形式：
+  - 四個像素為: [Y0 U0 V0] [Y1 U1 V1] [Y2 U2 V2] [Y3 U3 V3]
+  - 存放的碼流為: Y0 U0 V0 Y1 U1 V1 Y2 U2 V2 Y3 U3 V3
+  - 映射出像素點為: [Y0 U0 V0] [Y1 U1 V1] [Y2 U2 V2] [Y3 U3 V3]
+
+**2. 4:2:2** 
+
+- 格式僅採用 4:4:4 的一半色度
+
+- YCbCr 4:2:2 每pixel使用：8 bits (Y) + 4 bits (Cb) + 4 bits (Cr) = 16 bits
+
+- 存儲形式：
+  - 四個像素為: [Y0 U0 V0] [Y1 U1 V1] [Y2 U2 V2] [Y3 U3 V3]
+  - 存放的碼流為: Y0 U0 Y1 V1 Y2 U2 Y3 V3
+  - 映射出像素點為: [Y0 U0 V1] [Y1 U0 V1] [Y2 U2 V3] [Y3 U2 V3]
+
+**3. 4:2:0** 
+
+- 代表存留的色度僅為 4:4:4 格式的四分之一
+
+- 4:2:0並不意味著只有Y,Cb而沒有Cr分量。它指得是對每列掃描線來說，只有一種色度分量以2:1的抽樣率存儲。相鄰的掃描列存儲不同的色度分量，也就是說，如果一行是4:2:0的話，下一行就是4:0:2，再下一行是4:2:0...以此類推。對每個色度分量來說，水平方向和豎直方向的抽樣率都是2:1，所以可以說色度的抽樣率是4:1
+
+- YCbCr 4:2:0/4:0:2 每pixel使用：8 bits (Y) + 2 bits (Cb) + 2 bits (Cr) = 12 bits
+    
+- 存儲形式：
+  - 八個像素為:
+    [Y0 U0 V0] [Y1 U1 V1] [Y2 U2 V2] [Y3 U3 V3]
+    [Y5 U5 V5] [Y6 U6 V6] [Y7 U7 V7] [Y8 U8 V8]
+  - 存放的碼流為:
+    Y0 U0 Y1 Y2 U2 Y3
+    Y5 V5 Y6 Y7 V7 Y8
+  - 映射出像素點為: 
+    [Y0 U0 V5] [Y1 U0 V5] [Y2 U2 V7] [Y3 U2 V7]
+    [Y5 U0 V5] [Y6 U0 V5] [Y7 U2 V7] [Y8 U2 V7]
+
+<h3 id="1.14.4">攝像頭接口分類 (DVP、MIPI和usb)</h3>
+
+- DVP(Digital Video Port)
+
+- MIPI(MIPI-CSI2)
+  - 在攝像頭領域，MIPI一般指CSI2協議，該協議一般是建立在D-PHY物理層上的
+  - 但是現在也會採用C-PHY,在MIPI中有一個專門的CCI（類I2C）通信接口，這接口只能用於攝像頭的通信，CSI-2主要由應用層，協議層，物理層組成，只需要一條CLKP/CLKN,多條DATAP/DATAN線,最大支持4lane,4lane的意思是有四組DATAP/DATAN線,2lane的意思是2組DATAP/DATAN線,最大支持4通道數據傳輸,單線傳輸速度高達2Gb/s
+  - mipi總線是差分信號，串行傳輸，在傳輸過程中數據比較穩定，抗干擾比較強，並且節約的傳輸線
+
+- USB
+  - USB接口是差分信號
+  - UVC全稱 USB video class或者USB device class,是Microsoft 與另外幾家設備廠聯合推出的USB視頻捕獲設備定義的協議標準，目前已經成為USB org標準之一。如今的主流操作系統(win XP，linux 2.4.6 and Macos 10.5以及相關的最新版本都支持)都已經提供UVC設備驅動，因此符合UVC規格的硬件設備在不需要安裝任何驅動程序下就可以在主機中正常使用
+
+<h2 id="1.15">Audio</h2>
+
+<h3 id="1.15.1">關於pulseaudio和alsa</h3>
+
+[Linux音频软件：Alsa、OSS和Pulseaudio、ESD](https://blog.csdn.net/qq_34638161/article/details/106568315)
+
+- alsa是一套框架，應用層直接可以調用alsa lib發聲音，但是混音上應該有些不足，操作可能比較複雜。
+
+- pulseaudio，在alsa lib上又封裝了一層，增加了很多pulseaudio自己定義的插件，這樣大大擴展alsa lib的功能，同時混音方面也加強了。
+  - 應用之前是`app-->alsa lib --->alsa driver--->發聲音`。
+  - 現在是`app--->pulseaudio--->alsa lib--->alsa driver--->發聲音`。
+  - 或是為了兼容之前的app(只支持alsa lib的程序)
+`app--->alsa lib---> alsa lib的pulseaudio插件--->pulseaudio--->alsa lib--->alsa driver--->發聲音`。
+
+- pulseaudio提供了自己增加插件的功能，你把源碼看明白後，自己可以寫插件，把聲音截斷處理後，再向下流，比較方便，個人感覺比在alsa lib中把聲音截斷要簡單一些。
+
+- pulseaudio分client和server兩部分，server直接打開alsa
+
+   `app--->alsa lib---> alsa lib的pulseaudio插件--->pulseaudio client--->pulseaudio server--->alsa lib--->alsa driver--->發聲音`
+
+<h3 id="1.15.2">linux下查看音频設備</h3>
+
+```bash
+cat /proc/asound/cards
+```
+
+<h3 id="1.15.3">amixer修改與查看codec register</h3>
+
+```Shell
+# amixer -h
+Usage: amixer <options> [command]
+
+Available options:
+  -h,--help       this help
+  -c,--card N     select the card
+  -D,--device N   select the device, default 'default'
+  -d,--debug      debug mode
+  -n,--nocheck    do not perform range checking
+  -v,--version    print version of this program
+  -q,--quiet      be quiet
+  -i,--inactive   show also inactive controls
+  -a,--abstract L select abstraction level (none or basic)
+  -s,--stdin      Read and execute commands from stdin sequentially
+  -R,--raw-volume Use the raw value (default)
+  -M,--mapped-volume Use the mapped volume
+
+Available commands:
+  scontrols       show all mixer simple controls
+  scontents       show contents of all mixer simple controls (default command)
+  sset sID P      set contents for one mixer simple control
+  sget sID        get contents for one mixer simple control
+  controls        show all controls for given card
+  contents        show contents of all controls for given card
+  cset cID P      set control contents for one control
+  cget cID        get control contents for one control
+```
+
+<h3 id="1.15.4">聲卡接口Line in、Line out、Mic in和Speak out</h3>
+
+![Audio_img00](./image/Audio/Audio_img00.png)
+
+- Line In/Out傳遞的是只經過A/D或D/A芯片轉換後的信號，還原度較高; Speaker Out輸出的是經放大芯片(例如TDA1517P)放大過的信號，聲音會產生一定失真(但很小，人耳幾乎不能察覺)。
+
+- 如果音箱上有放大電路，則連接到Line Out，如果沒有放大電路則連接到Speaker Out
+
+#### Line In
+
+- 線性輸入，用來輸入未經放大芯片放大的模擬音頻信號。
+
+#### Mic In
+
+- 麥克風輸入，用來連接麥克風。
+
+#### Line Out
+
+- 線性輸出，用來輸出未經放大芯片放大的模擬音頻信號
+
+#### Speaket Out（现在通常和Line Out合为一个插孔）
+
+- 用來輸出經放大芯片放大的模擬音頻信號。
+
+#### 3.5mm 音頻接口類型說明
+
+- 有的時候我們將非原配的耳機插入手機或電腦，發現音質非常差或只有某部分音頻，大多是因為耳機與設備的音頻接口類型不同導致的。
+
+- 常見的耳機接口都是 **3.5mm** 音頻接口，分為 **3-pole 和 4-pole** 兩類，而 **4-pole 中又分 Standard 和 OMTP 兩種型號**。這是美國人的叫法，國內一般把 OMTP 稱為國標，而把稱 Standard 為 CTIA 或美標。一般來說，Standard 型號的耳機插頭上的塑料環是白色的，而 OMTP 型號插頭上的塑料環是黑色。
+
+- **3-pole** 的接口，顧名思義在插頭上只有 3 個觸點，從尖端到根部依次是**左聲道、右聲道、電源地**，所以這種接頭的耳機**不支持麥克風**
+
+- **4-pole** 的接口支持麥克風，但從上圖可以清晰地看出，Standard 型號和 OMTP 型號的插頭，其麥克風觸點與電源地觸點的位置正好相反。這就是為什麼當我們將 OMTP 插頭耳機插入 Standard 接口時，聲音聽起來不正常，但按下耳機上的通話按鍵時卻又好了
+
+- 電路中加入了**耳機類型檢測芯片**，如 **ts3a227e**，可以自動檢測耳機接口類型
+
+<h3 id="1.15.5">Output interfaces of MEMS microphones (Amic & Dmic)</h3>
+
+- **MEMS(Micro Electro Mechanical Systems) Mic**，會有Analog & Digital 兩大類別的輸出介面，其中**類比(Analog)** 又分為**單端 (Single ended)** & **差動 (Differential)**兩種輸出。**數位(Digital)**部分則有 **PDM/ I2S/ TDM** 三種數位介面，其中以PDM介面為最大宗。
+
+<h4 id="1.15.5.1">A-mic</h3>
+
+##### 1. Analog Single ended (類比單端)
+
+- 這是佔比較多的輸出格式，且單價會比差動 (Differential) 低一些，感度通常是在 -38dBV~-40dBV區間，所有Audio codec mic Input都支援此信號，是最普及的應用架構，但此類Mic的地迴路在PCB設計時需要特別注意，以避免產生Noise
+
+    ![Amic_img02](./image/Audio/Audio_img02.png)
+
+##### 2. Analog differential ended (類比差動)
+
+- 相對佔比較少的輸出格式，且單價會比單端 (Single ended)高一些，由於是差動輸出，因此感度也會提升6dBV，感度通常是在 -32dBV附近，且也可提高**AOP (Acoustic overload Point)**，大部分的Audio codec mic Input 也都支援此信號，是常見降低雜訊的應用架構，可參考Fig.2 ，由於差動架構可有效消除**共模雜訊(Common mode)**。
+
+    ![Amic_img03](./image/Audio/Audio_img03.png)
+
+    ![Amic_img04](./image/Audio/Audio_img04.png)
+
+<h4 id="1.15.5.2">D-mic</h3>
+
+##### 1. PDM (Pulse Density Modulation 脈波密度調變)
+
+- 是MEMS Mic 數位介面的主流規格，其中**Data BUS 是L/R ch 共用**，因使它只需要**4條線**，即可完成 Stereo L/R 聲音通道傳輸，有利於手攜式裝置的PCB Layout 設計，由於是**數位式，因此需要Clock 時脈信號**，通常是1MHZ~4MHZ，因此音頻頻寬可滿足 20HZ~20KHZ應用，廣泛應用於 3C/汽車/IoT 領域
+
+    ![Amic_img05](./image/Audio/Audio_img05.png)
+
+##### 2. I2S (Integrated Interchip Sound 積體電路內置音頻匯流排)
+
+- 是飛利浦公司為數字音頻設備之間的音頻數據傳輸而制定的一種匯流排標準，該匯流排專門用於**音頻設備之間的數據傳輸**，廣泛套用於各種多媒體系統。由於**低階MCU大部分都不支援PDM介面，只支援基本的I2S 介面**，因此Mic廠商仍為這小眾市場推出I2S MEMS Mic，以滿足無Audio codec的產品應用市場
+
+    ![Amic_img06](./image/Audio/Audio_img06.png)
+
+##### 3. TDM (Time division Multiplexing 分時多工)
+
+- 是將傳輸媒介的使用時間分割成若干個**固定的時槽（Time Slot）**，每一時槽佔用一小段時間（例如20ms），而這一小段時間就是一個**虛擬通道**。
+
+- 通訊時，互連的雙方會被設定在某一時槽上傳送資料，在某段時間內它擁有傳輸媒介的使用權；而就較長時間來看，**整個傳輸媒體就等同有多條連線「同時」傳送資料**。
+
+- Smart Speaker 需要做**Far Field Voice Pickup (專指一段距離以外之聲音的輸入)**，因此 2pcs Beamforming Mic (指向性麥克風?) 已無法滿足特性，因而發展出 **6~8pcs Mic Array** 的架構，由於每台產品的Mic數量大幅增加，意謂著需要更多通道的數位介面 Ex. PDM / I2S，因此，為了降低Mic 數位介面數量與成本，採用TDM 分時多工將信號輪流傳送，以達到低成本多通道的傳輸方式。
+
+    ![Amic_img07](./image/Audio/Audio_img07.png)
+
+<h3 id="1.15.6">Noun Definition</h3>
+
+- FR: 我設定標準音源(ref. SPK)在一定音壓下，輸出一個掃頻音檔(能量相同)，待測MIC收到的表現。會因為電路或是收音路徑進而影響到在不同頻率下的表現
+
+- 比例如果是指SNR的話，就是我們MIC本身在silence就會有一些雜訊，可能來自電路可能來自環境的底噪播MIC判斷為訊號而存成檔案，跟收到的訊號音量的一個比值
+
+![Audio_img08](./image/Audio/Audio_img08.png)
+
+
+<h1 id="2">Linux Kernel相關知識</h1>
+
+<h2 id="2.1">基本系統數據類型</h2>
+
+[/usr/include/sys/types.h基本系統數據類型](https://blog.csdn.net/rong_toa/article/details/79254677)
+
+<h2 id="2.2">取得kernel log的方式</h2>
+
+1. 接上UART，搭配TeraTerm擷取log
+
+2. 透過telnet進 去機台，透過`dmesg`把kernel log儲存下來，由於有buffer大小限制，但若要儲存的log太長，可以使用下面的方式，把全部儲存起來
+
+    ```Shell
+    #!/bin/sh
+
+    echo "--------------------kernel log start--------------------\n\n" > /adc/dmesg.log
+
+    while [ 1 ]
+    do
+        dmesg >> /adc/dmesg.log
+        sleep 0.5s
+        dmesg -C
+        sleep 0.5s
+    done
+    ```
+
+- Note: 除了使用 `dmesg` , 也可以使用 `journalctl`
+
+<h2 id="2.3">User 跟 Kernel溝通有幾種</h2>
+
+1. 建device node在/dev下，透過open/read/write/ioctl，這個要寫程式，call api。
+2. proc下，已經很少用，主要給linux kernel code用
+例如：echo 12 > /proc/sys/kernel/printk
+3. debugfs，debug用，成品fw都會拿掉，雖然很方便用，類似sysfs。
+4. sysfs，目前常見方式，給device driver用。這樣shell script直接用，不用寫程式。
+
+<h2 id="2.4">Linux kernel coding style</h2>
+
+[Linux kernel coding style](https://www.kernel.org/doc/html/v4.10/process/coding-style.html#linux-kernel-coding-style)
+
+<h2 id="2.5">Linux內核開發工具</h2>
+
+[bootlin](https://elixir.bootlin.com/linux/v5.4.148/source)
+
+1. 選擇內核版本；
+2. 輸入需要查詢的信息；
+3. 點擊查詢按鈕；
+4. 選擇與架構相同的文件查看。
+
+  ![img00](./image/Linux/img00.png)
+
+
+<h1 id="3">快速入門</h1>
 
 [[第1篇]_新學習路線_視頻介紹_資料下載.md](./[第1篇]_新學習路線_視頻介紹_資料下載.md)
 
@@ -687,7 +1459,7 @@ void main(){
 
 [[第6篇]_項目實戰.md](./[第6篇]_項目實戰.md)
 
-<h1 id="3">驅動大全</h1>
+<h1 id="4">驅動大全</h1>
 
 [[第7篇]_驅動大全.md](./[第7篇]_驅動大全.md)
 
