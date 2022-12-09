@@ -8,6 +8,7 @@ If there is related infringement or violation of related regulations, please con
 # 目錄
 
 - [Note](#0)
+  - [學習資源](#0.1)
 - [相關知識](#1)
   - [單片機 & 嵌入式系統](#1.1)
   - [嵌入式系統之作業系統](#1.2)
@@ -48,14 +49,43 @@ If there is related infringement or violation of related regulations, please con
       - [A-mic](#1.15.5.1)
       - [D-mic](#1.15.5.2)
     - [Noun Definition](#1.15.6)
+  - [H264與H265](#1.16)
+  - [查詢RAM容量 & RAMDisk](#1.17)
+  - [MTD、MMC、eMMC](#1.18)
+  - [linux framebuffer](#1.19)
+    - [FrameBuffer在Linux中的實現和機制](#1.19.1)
+    - [應用程序的操作](#1.19.2)
+  - [簡單測試Uart通訊是否有通](#1.20)
 - [Linux Kernel相關知識](#2)
   - [基本系統數據類型](#2.1)
   - [取得kernel log的方式](#2.2)
   - [User 跟 Kernel溝通有幾種](#2.3)
   - [Linux kernel coding style](#2.4)
   - [Linux內核開發工具](#2.5)
-- [快速入門](#3)
-- [驅動大全](#4)
+  - [rcS](#2.6)
+  - [V4L2](#2.7)
+  - [IAV](#2.8)
+  - [TTY](#2.9)
+    - [終端介紹](#2.9.1)
+    - [TTY子系統](#2.9.2)
+- [Linux-Device-Drivers-Development](#3)
+  - [概念速記](#3.1)
+    - [mknod用法以及主次設備號](#3.1.1)
+    - [裝置讀寫操作 & copy_to_user & copy_from_user](#3.1.2)
+    - [Linux 內核讀寫文件 kernel_read() & kernel_write()](#3.1.3)
+      - [打開文件 - filp_open()](#3.1.3.1)
+      - [讀寫文件 - kernel_read() & kernel_write()](#3.1.3.2)
+      - [關閉文件 - filp_close()](#3.1.3.3)
+      - [驅動讀寫範例](#3.1.3.4)
+      - [Kernel_Read_txt_Test](#3.1.3.5)
+  - [Char Device Driver](#3.2)
+    - [Simple Example](#3.2.1)
+  - [I2C](#3.3)
+    - [i2c-tool](#3.3.1)
+    - [i2c通過調用ioctl來讀寫設備](#3.3.2)
+    - [Read & Write through i2c from the user-space](#3.3.3)
+- [快速入門](#4)
+- [驅動大全](#5)
 
 
 <h1 id="0">Note</h1>
@@ -66,9 +96,9 @@ If there is related infringement or violation of related regulations, please con
 
 [Linux 内核源码（kernel source）路径](https://blog.csdn.net/lanchunhui/article/details/72866103)
 
-- 内核源码所在的位置：/usr/src
+<h2 id="0.1">學習資源</h2>
 
-[Linux驱动之用man查看内核函数](https://blog.csdn.net/lang523493505/article/details/104273604)
+[The Linux Kernel](https://linux-kernel-labs.github.io/refs/heads/master/index.html)
 
 <h1 id="1">相關知識</h1>
 
@@ -458,6 +488,20 @@ void main(){
 - 使用這種技術，兩個以上的訊號或資料流可以同時在一條通訊線路上傳輸，其表現為同一通訊頻道的子頻道。但在物理上來看，訊號還是輪流占用物理通道的。時間域被分成周期迴圈的一些小段，每段時間長度是固定的，每個時段用來傳輸一個子頻道。
 
 <h2 id="1.7">Ethernet（以太網）之 詳解 MAC、MII、PHY</h2>
+
+[mac地址真的是全球是唯一的嗎](https://blog.csdn.net/renlonggg/article/details/78435986)
+
+[為什麼 MAC 地址不需要全球唯一](https://draveness.me/whys-the-design-non-unique-mac-address/)
+
+- 修改mac地址
+
+    ```Shell
+    ifconfig ethX down
+
+    ifconfig ethX hw ether aa:bb:cc:dd:ee:ff
+
+    ifconfig ethX up
+    ```
 
 [Reference](https://www.twblogs.net/a/5b7a98562b7177392c9666f8)
 
@@ -1392,6 +1436,322 @@ Available commands:
 
 ![Audio_img08](./image/Audio/Audio_img08.png)
 
+<h2 id="1.16">H264與H265</h2>
+
+- H.264和H.265都屬於視頻的編碼格式; 而我們平時所說的MP4、AVI、FLV、MOV這些，都屬於封裝格式。
+
+   ![img00](./image/H264_H265/img00.jpg)
+
+  - 封裝的編碼格式各式各樣。封裝格式把視頻、音頻、媒體信息、字幕等統統灌進去，但並不能決定我們的視頻質量。而編碼格式是一種壓縮方式
+
+  - H264是一種幀間編碼，只記錄每一幀之間的變化，後期解碼的時候只要在上一幀基礎上算出變化就可以了，不僅大幅度縮小體積，還能保持比較好的畫質。
+
+   Note: 如果你坐拍一段視頻，那麼基本只有你的嘴在動，背景基本沒有變化，這時候要是每一幀畫面都全面記錄一次，那麼沒拍多久你硬碟就滿了。比方說不壓縮的1080P60幀，一秒鐘就能占用300+MB，非常恐怖。
+
+   ![img01](./image/H264_H265/img01.jpg)
+
+- 常見的封裝-編碼格式表:
+
+  - 【MP4】H265、H264、MPEG4...
+  - 【AVI】MPEG2、AC1、H264、DIVX、XVID...
+  - 【MOV】MPEG2、H264、XVID...
+  - 【MKV】所有視頻編碼格式
+
+- 不同的編碼器雖然有微小的差別，但決定畫質的，往往還是碼率，碼率越大，就意味著保存的信息量越多。
+
+- H264被MPEG組織稱為AVC（Advanced Video Codec/先進視頻編碼），用來替代原有的MPEG4P2（DIVX、XVID）
+
+- H265比H264有著更強的壓縮效率，被稱為HEVC（High Efficiency Video Coding/高效視頻編碼）
+
+- H265使用了「塊的四叉樹劃分結構」，從16x16像素的固定宏塊，升級成了8x8 ~ 64x64的自適應劃分，並加入了各種自適應預測、變換等編碼技術，算法也經過優化，同碼率下理論占用空間節省了50%足足一半，動態畫面表現會更加清晰。
+
+   ![img02](./image/H264_H265/img02.jpg)
+
+- 為何H264還沒被取代 : 
+
+  - 現存老設備都不能向上支持硬解，軟解更吃不消
+  - H265的商業授權費太貴，市場都沒成熟呢
+
+<h2 id="1.17">查詢RAM容量 & RAMDisk</h2>
+
+查看內存(RAM) : `free`
+
+```Shell
+$ free
+            total        used        free      shared  buff/cache   available
+Mem:        2045804     1160312      800892        6412       84600      830236
+Swap:             0           0           0
+
+$ free -h
+            total        used        free      shared  buff/cache   available
+Mem:           2.0G        1.1G        782M        6.3M         82M        810M
+Swap:            0B          0B          0B
+```
+
+RAMDisk
+
+- [Linux如何將記憶體(RAM)作為硬碟使用？RAMDisk詳細介紹](https://magiclen.org/linux-ramdisk/)
+
+<h2 id="1.18">MTD、MMC、eMMC</h2>
+
+- [[接口]mmc/eMMC/SD-card](https://www.codeprj.com/zh/blog/6124e51.html)
+
+  - MMC(multiMedia card)是一種通信協議，支持兩種模式SPI和MMC
+  - eMMC是一種支持MMC協議的芯片
+  - eMMC和SD卡都是將閃存控制器和NAND Flash封裝在一起，只是接口不同，eMMC一般是BGA封裝，焊接在PCB上SD卡單獨封裝，使用SDIO接口通訊, SD卡是在MMC基礎上發展起來，且兼容MMC，所以在Linux系統下，SD卡設備名稱是mmcblk (mmcblk0p1代表第一個分區, 問題mmcblk0和mmcblk1是分別代表sd卡和eMMC設備還是二者誰先掛上誰就是mmcblk0?)
+
+- [嵌入式文件系統簡介(一) —— Linux MTD設備文件系統](https://www.twblogs.net/a/5bcf6d0e2b71776a052c617f)
+
+  - 文件系統是一套實現了數據的存儲、分級組織、訪問和獲取等操作的抽象數據類型（Abstract data type）
+  - 在嵌入式系統中，與文件系統相關的存儲設備包括硬盤、Flash存儲器等。Flash存儲器又分爲Flash芯片設備（Raw Flash device，也叫MTD設備）和帶Flash控制器的設備（Flash Translation Layer device， FTL設備），兩者的關鍵區別是是否帶有Flash控制器，這也直接決定了文件系統分爲不同的兩類。
+  - 其中MTD設備包括NOR Flash、NAND Flash等
+  - FTL設備包括SD、eMMC、SSD、USB大容量存儲設備等
+
+   ![img01](./image/MTD_FTL/img01.PNG)
+
+   ![img00](./image/MTD_FTL/img00.PNG)
+
+1. 查看硬碟資訊 : `fdisk -l`
+
+   ```Shell
+   # fdisk -l
+   Disk /dev/ram0: 64 MiB, 67108864 bytes, 131072 sectors
+   Units: sectors of 1 * 512 = 512 bytes
+   Sector size (logical/physical): 512 bytes / 4096 bytes
+   I/O size (minimum/optimal): 4096 bytes / 4096 bytes
+
+   Disk /dev/mmcblk0: 7.1 GiB, 7616856064 bytes, 14876672 sectors
+   Units: sectors of 1 * 512 = 512 bytes
+   Sector size (logical/physical): 512 bytes / 512 bytes
+   I/O size (minimum/optimal): 512 bytes / 512 bytes
+   ```
+
+2. 查看硬碟partitions
+
+   ```Shell
+   # cat /proc/partitions
+   major minor  #blocks  name
+
+      1        0      65536 ram0
+   179        0    7438336 mmcblk0
+   179        1        128 mmcblk0p1
+   179        2       1024 mmcblk0p2
+   179        3        896 mmcblk0p3
+   179        4       1024 mmcblk0p4
+   179        5      16384 mmcblk0p5
+   179        6      16384 mmcblk0p6
+   179        7     819200 mmcblk0p7
+   179        8      81920 mmcblk0p8
+   179        9    1024000 mmcblk0p9
+   179       10    1283072 mmcblk0p10
+
+   # cat /proc/mtd
+   dev:    size   erasesize  name
+
+   ```
+
+3. 查看掛載情況 `df -h -T`
+
+   ```Shell
+   # df -h -T
+   Filesystem           Type            Size      Used Available Use% Mounted on
+   /dev/root            ext4          500.7M    411.3M     60.0M  87% /
+   devtmpfs             devtmpfs      334.8M         0    334.8M   0% /dev
+   tmpfs                tmpfs         998.9M         0    998.9M   0% /dev/shm
+   tmpfs                tmpfs         399.6M    252.0K    399.3M   0% /run
+   tmpfs                tmpfs         998.9M      4.0K    998.9M   0% /tmp
+   tmpfs                tmpfs         998.9M      6.0M    992.9M   1% /var/log
+   tmpfs                tmpfs         998.9M         0    998.9M   0% /var/tmp
+   /dev/mmcblk0p9       ext2          984.3M      1.2M    933.0M   0% /adc
+   tmpfs                tmpfs         199.8M         0    199.8M   0% /run/user/0
+   ```
+
+<h2 id="1.19">linux framebuffer</h2>
+
+https://www.twblogs.net/a/5e504b42bd9eee21167d31fd
+
+https://blog.51cto.com/u_12956289/2916962
+
+- Linux抽象出 FrameBuffer 這個設備，將顯卡硬件結構抽象掉，供用戶態進程通過 Framebuffer 的讀寫直接對顯存進行操作進而實現直接寫屏。
+
+- framebuffer是LCD對應的一種HAL（硬件抽象層），用戶不必關心物理顯存的位置、換頁機制等等具體細節。這些都是由 Framebuffer設備驅動來完成的
+
+- 幀緩衝設備為標準字符設備，主設備號為29，次設備號則從0到31。分別對應/dev/fb0 - /dev/fb31
+
+- framebuffer的設備文件一般是 `/dev/fb0`、`/dev/fb1` 等等。
+
+    ```Shell
+    ## 清空屏幕
+    $ dd if=/dev/zero of=/dev/fb
+    ## 如果顯示模式是 1024x768-8 位色，清空屏幕
+    $ dd if=/dev/zero of=/dev/fb0 bs=1024 count=768
+
+    ## 將fb中的內容保存下來
+    $ dd if=/dev/fb of=fbfile
+    ## 重新寫回屏
+    $ dd if=fbfile of=/dev/fb
+    ```
+
+- 一般通過將 FrameBuffer 設備映射到進程地址空間的方式使用，比如下面的程序就打開 /dev/fb0 設備，並通過 **mmap** 系統調用進行地址映射，隨後用 memset 將屏幕清空
+
+    ```C
+    /*顯示模式是 1024x768-8 位色模式，線性內存模式*/
+
+    int fb;
+
+    unsigned char* fb_mem;
+
+    fb = open ("/dev/fb0", O_RDWR);
+
+    fb_mem = mmap (NULL, 1024*768, PROT_READ|PROT_WRITE,MAP_SHARED,fb,0);
+
+    memset (fb_mem, 0, 1024*768); //這個命令應該只有在root可以執行
+    ```
+
+<h3 id="1.19.1">FrameBuffer在Linux中的實現和機制</h3>
+
+- Framebuffer對應的源文件在linux/drivers/video/目錄下
+  - 總的抽象設備文件爲 `fbcon.c`
+
+- FrameBuffer設備驅動基於如下兩個文件：
+  - `linux/include/linux/fb.h`
+    - 主要的結構都是在這個中文件定義的
+    - `struct fb_var_screeninfo`： 描述了顯示卡的特性
+    - `struct fb_fix_screeninfo`： 在顯卡被設定模式後創建，它描述顯示卡的屬性，並且系統運行時不能被修改；比如FrameBuffer內存的起始地址。它依賴於被設定的模式，當一個模式被設定後，內存信息由顯示卡硬件給出，內存的位置等信息就不可以修改。
+    - `struct fb_cmap`： 描述設備無關的顏色映射信息。可以通過FBIOGETCMAP 和 FBIOPUTCMAP 對應的ioctl操作設定或獲取顏色映射信息.
+    - `struct fb_info`： 定義當前顯卡的當前狀態；fb_info結構僅在內核中可見，在這個結構中有一個fb_ops指針， 指向驅動設備工作所需的函數集。
+    - `struct fb_ops`： 用戶應用可以使用ioctl()系統調用來操作設備，這個結構就是用以支持ioctl()的這些操作的。
+
+  - `linux/drivers/video/fbmem.c`
+    - fbmem.c 處於Framebuffer設備驅動技術的中心位置，它爲上層應用程序提供系統調用也爲下一層的特定硬件驅動提供接口。爲所有支持FrameBuffer的設備驅動提供了通用的接口
+    - 全局變量 `struct fb_info *registered_fb[FB_MAX];` & `int num_registered_fb;` 記錄了所有fb_info 結構的實例
+      - fb_info 結構描述顯卡的當前狀態，所有設備對應的fb_info 結構都保存在這個數組中，當一個FrameBuffer設備驅動向系統註冊自己時，其對應的fb_info 結構就會添加到這個結構中，同時num_registered_fb 爲自動加1
+    - `register_framebuffer(struct fb_info *fb_info);` & `unregister_framebuffer(struct fb_info *fb_info);` 提供給下層FrameBuffer設備驅動的接口，設備驅動通過這兩函數向系統註冊或註銷自己
+
+- 用戶應用程序通過`ioctl()`系統調用操作硬件，`fb_ops` 中的函數就用於支持這些操作 (fb_ops結構與file_operations 結構不同， `fb_ops` 是底層操作的抽象,而 `file_operations` 是提供給上層系統調用的接口，可以直接調用)
+
+- `ioctl()` 命令與 `fb_ops` 中函數的關係，定義了fb_XXX_XXX 方法，用戶程序就可以使用FBIOXXXX宏的ioctl()操作來操作硬件
+
+   ```C
+   FBIOGET_VSCREENINFO < -- > fb_get_var
+
+   FBIOPUT_VSCREENINFO < -- > fb_set_var
+
+   FBIOGET_FSCREENINFO < -- > fb_get_fix
+
+   FBIOPUTCMAP < -- > fb_set_cmap
+
+   FBIOGETCMAP < -- > fb_get_cmap
+
+   FBIOPAN_DISPLAY < -- > fb_pan_display
+   ```
+
+<h3 id="1.19.2">應用程序的操作</h3>
+
+**1. 讀/寫（read/write）/dev/fb**：相當於讀/寫屏幕緩衝區
+
+**2. 映射（map）操作**：幀緩衝設備可以通過mmap()映射操作將屏幕緩衝區的物理地址映射到用戶空間的一段虛擬地址上，然後用戶就可以通過讀寫這段虛擬地址訪問屏幕緩衝區，在屏幕上繪圖了。
+
+**3. I/O控制**：對於幀緩衝設備，對設備文件的ioctl操作可讀取/設置顯示設備及屏幕的參數，如分辨率，屏幕大小等相關參數。 ioctl的操作是由底層的驅動程序來完成的。
+
+#### 操作步驟
+
+1. 打開/dev/fb設備文件
+2. 用ioctl操作取得當前顯示屏幕的參數，根據屏幕參數可計算屏幕緩衝區的大小
+3. 將屏幕緩衝區映射到用戶空間
+4. 映射後即可直接讀寫屏幕緩衝區，進行繪圖和圖片顯示
+
+#### framebuffer相關數據結構
+
+1. `fb_info` 結構體：幀緩衝設備中最重要的數據結構體，包括了幀緩衝設備屬性和操作的完整性屬性
+2. `fb_ops` 結構體：fb_info結構體的成員變量，fb_ops為指向底層操作的函數的指針
+3. `fb_var_screen` 和 `fb_fix_screen` 結構體：fb_var_screen記錄用戶可以修改的顯示控制器參數，fb_fix_screen記錄用戶不能修改的顯示控制器參數。
+
+#### 範例
+
+```C
+#include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <linux/fb.h>
+#include <sys/mman.h>
+int main()
+{
+    int fbfd = 0;
+    struct fb_var_screeninfo vinfo;
+    unsigned long screensize = 0;
+    char *fbp = 0;
+    int x = 0, y = 0;
+    int i = 0;
+    // Open the file for reading and writing
+    fbfd = open("/dev/fb0", O_RDWR);
+    if (!fbfd)
+    {
+        printf("Error: cannot open framebuffer device.\n");
+        exit(1);
+    }
+    printf("The framebuffer device was opened successfully.\n");
+    // Get variable screen information
+    if (ioctl(fbfd, FBIOGET_VSCREENINFO, &vinfo))
+    {
+        printf("Error reading variable information.\n");
+        exit(1);
+    }
+    printf("R:%d,G:%d,B:%d \n", vinfo.red, vinfo.green, vinfo.blue );
+    printf("%dx%d, %dbpp\n", vinfo.xres, vinfo.yres, vinfo.bits_per_pixel);
+    if (vinfo.bits_per_pixel != 32)
+    {
+        printf("Error: not supported bits_per_pixel, it only supports 32 bit color\n");
+        exit(1);
+    }
+    // Figure out the size of the screen in bytes
+    screensize = vinfo.xres * vinfo.yres * vinfo.bits_per_pixel / 8;
+    printf("pixels:%d,screensize:%dB\n", vinfo.xres * vinfo.yres, screensize);
+    // Map the device to memory
+    fbp = (char *)mmap(0, screensize, PROT_READ | PROT_WRITE, MAP_SHARED, fbfd, 0);
+    if ((int)fbp == -1)
+    {
+        printf("Error: failed to map framebuffer device to memory.\n");
+        exit(4);
+    }
+    printf("The framebuffer device was mapped to memory successfully.\n");
+
+    for (i = 0; i < 480000; i++)
+    {
+        *((unsigned int *)fbp + i) = 0x00ff00ff;
+    }
+    munmap(fbp, screensize);
+    close(fbfd);
+    return 0;
+}
+```
+
+<h2 id="1.20">簡單測試Uart通訊是否有通</h2>
+
+透過cat & echo來確認通訊是通的
+
+- 利用不同console視窗來作為範例，透過輸入 `tty` 來得知目前的 偽終端(pty)
+
+  ```Shell
+  ## console_1
+  $ tty
+  /dev/pts/0
+
+  ## console_2
+  $ tty
+  /dev/pts/1
+  ```
+
+- 在 `/dev/pts/0` 利用 `cat < /dev/pts/1 &` 來收取任何輸入於 `/dev/pts/1` 的任何東西
+
+    ![tty_img00](./image/tty/tty_img00.PNG)
+
+- 在 `/dev/pts/0` 利用 `echo "<string>" > /dev/pts/1` 輸入字串傳送印在 `/dev/pts/1`
+
+    ![tty_img01](./image/tty/tty_img01.PNG)
+
+- 利用這種方式，可以用來簡單測試Uart通訊是否有通
 
 <h1 id="2">Linux Kernel相關知識</h1>
 
@@ -1445,7 +1805,509 @@ Available commands:
   ![img00](./image/Linux/img00.png)
 
 
-<h1 id="3">快速入門</h1>
+<h2 id="2.6">rcS</h2>
+
+[/etc/init.d/rcS在什麼位置被調用](http://www.360doc.com/content/21/0224/10/7551_963686293.shtml)
+
+[嵌入式Linux系统启动脚本rcS](https://blog.csdn.net/lida2003/article/details/6732052)
+
+- 流程大致如下： `init程序（linuxrc） -> busybox -> /etc/inittab -> /etc/init.d/rcS`
+
+<h2 id="2.7">V4L2</h2>
+
+[V4L2简介](https://work-blog.readthedocs.io/en/latest/v4l2%20intro.html)
+
+[Linux下Camera程式設計–V4L2](https://codertw.com/%E7%A8%8B%E5%BC%8F%E8%AA%9E%E8%A8%80/465905/)
+
+[v4l2的學習建議和流程解析](https://www.twblogs.net/a/5b825df82b717766a1e7f024)
+
+<h2 id="2.8">IAV</h2>
+
+[IAV程序相關API接口分析和iav調試方法](https://www.twblogs.net/a/5e9572d5bd9eee34b83ec1fc)
+
+<h2 id="2.9">TTY</h2>
+
+<h3 id="2.9.1">終端介紹</h3>
+
+- 負責連接到一台正常的計算機上（通常是通過串口） ，然後登陸計算機，並對該計算機進行操作，如顯示器和鍵盤能夠通過串口連接到計算機的設備就叫做終端
+
+- 終端的主要目的是提供人機交互的接口, 讓他人可以通過終端控製本機
+
+- tty就是終端子系統. tty一詞源於Teletypes
+  - tty-core是終端子系統的核心
+  - tty-core上層是字符設備驅動, 通過字符設備驅動, 終端子系統會在/dev目錄下創建各種各樣的tty節點
+
+- 串口是一個傳輸數據的載體. 根據載體的不同, 終端可以分為串行端口終端, 偽終端, 控制台終端.
+
+#### 串行端口终端(/dev/ttySn)
+
+- 載體為串口的終端. 設備節點名通常是/dev/ttyS0等, 也有USB轉串口類型的終端, 節點名通常是/dev/ttyUSB0等
+
+#### 控制台終端(/dev/console, /dev/tty0, /dev/tty1 ...)
+
+- 控制台就是Linux的顯示子系統+輸入子系統
+
+- 控制臺本身就有接收輸入和顯示輸出的功能, 只不過它的輸入一般是輸入子系統(鍵盤, 鼠標等). 它的輸出一般是顯示系統.  控制台終端就是把控制台的輸入/輸出功能做為載體, 借助它來創建終端.
+
+#### 偽終端(pty)
+
+- 偽終端主要是用於通過網絡來控制本機
+
+#### 控制終端(tty)
+
+- /dev/tty這個終端沒有任何載體,可以把它理解成一個鏈接，會鏈接到當前進程所打開的實際的終端。在當前進程的命令行里面輸入tty可以查看/dev/tty所對應的終端。比如getty這個程序運行在為終端的從設備/dev/pts/5上，那麼輸入tty命令的時候，顯示的就是/dev/pts/5
+
+<h3 id="2.9.2">TTY子系統</h3>
+
+![tty_img02](./image/tty/tty_img02.PNG)
+
+![tty_img03](./image/tty/tty_img03.PNG)
+
+
+<h1 id="3">Linux-Device-Drivers-Development</h1>
+
+<h2 id="3.1">概念速記</h2>
+
+<h3 id="3.1.1">mknod用法以及主次設備號</h3>
+
+- 建立特殊檔案, `mknod Name { b | c } Major Minor`
+
+- mknod 命令建立一個目錄項和一個特殊檔案的對應索引節點。
+  - 第一個引數是 Name 項裝置的名稱
+  - b 標誌表示這個特殊檔案是面向塊的裝置（磁碟、軟盤或磁帶）
+  - c 標誌表示這個特殊檔案是面向字元的裝置（其他裝置）
+
+- Example：
+
+   ```Shell
+   $ sudo insmod ./example.ko
+   $ sudo mknod /dev/example c 60 0
+   # /dev/example 是我們要存放檔案的路徑，
+   # c 代表 Character Device，
+   # 60 是這個驅動程式的 Major ID，
+   # 0 是驅動程式的 Minor ID。
+   $ sudo chmod 666 /dev/example
+   # 為了方便測試，我們把這個 Device 改成所有人都可以讀寫。
+   ```
+
+<h3 id="3.1.2">裝置讀寫操作 & copy_to_user & copy_from_user</h3>
+
+**1. 裝置讀操作：** `ssize_t (*read)(struct file *filp, char __user *buf, size_t  count, lofft *f_pos);`
+
+- filp：待操作的裝置檔案file結構體指標
+- buf：待寫入所讀取資料的使用者空間緩衝區指標
+- count：待讀取資料位元組數
+- f_pos：待讀取資料檔案位置，讀取完成後根據實際讀取位元組數重新定位
+- 返回：成功實際讀取的位元組數，失敗返回負值
+
+**2. 裝置寫操作：** `ssize_t (*write)(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos);`
+
+- filp：待操作的裝置檔案file結構體指標
+- buf：待寫入所讀取資料的使用者空間緩衝區指標
+- count：待讀取資料位元組數
+- f_pos：待讀取資料檔案位置，寫入完成後根據實際寫入位元組數重新定位
+- 返回：成功實際寫入的位元組數，失敗返回負值
+
+**3. 核心為驅動程式提供在核心空間和使用者空間傳遞資料的方法：**
+
+- 定義在`arch/arm/include/asm/uaccess.h`中
+
+- 使用者空間–>核心空間：
+
+  - `unsigned long copy_from_user(void *to, const void *from, unsigned long n);`
+    - to：目標地址（核心空間）
+    - from：源地址（使用者空間）
+    - n：將要拷貝資料的位元組數
+    - 返回：成功返回0，失敗返回沒有拷貝成功的資料位元組數
+
+  - `int get_user(data, ptr);`
+    - data：可以是位元組、半字、字、雙字型別的核心變數
+    - ptr：使用者空間記憶體指標
+    - 返回：成功返回0，失敗返回非0
+
+- 核心空間–>使用者空間：
+  - `unsigned long copy_to_user(void *to, const void *from, unsigned long n);`
+    - to：目標地址（使用者空間）
+    - from：源地址（核心空間）
+    - n：將要拷貝資料的位元組數
+    - 返回：成功返回0，失敗返回沒有拷貝成功的資料位元組數
+
+  - `int put_user(data, prt）;`
+    - data：可以是位元組、半字、字、雙字型別的核心變數
+    - ptr：使用者空間記憶體指標
+    - 返回：成功返回0， 失敗返回非0
+
+<h3 id="3.1.3">Linux 內核讀寫文件 kernel_read() & kernel_write()</h3>
+
+- https://blog.csdn.net/qq_42931917/article/details/122054256
+
+- 利用kernel的一些函數在需要調試的驅動程中讀寫文件數據
+
+- `filp_open()`、`filp_close()`、`kernel_read()`、`kernel_write()`這些函數在`linux/fs.h`和`asm/uaccess.h`頭文件中聲明
+
+<h4 id="3.1.3.1">打開文件 - filp_open()</h4>
+
+- filp_open()在kernel中可以打開文件
+
+- `strcut file* filp_open(const char* filename, int open_mode, int mode);`
+  - 返回值：返回strcut file*結構指針，供後繼函數操作使用，可利用IS_ERR()來檢驗其有效性。
+  - filename：表明要打開或創建文件的名稱（包括路徑部分）
+      Note：在內核中打開的文件時需要注意打開的時機，很容易出現需要打開文件的驅動很早就加載並打開文件，但需要打開的文件所在設備還不有掛載到文件系統中，而導致打開失敗。
+  - open_mode：文件的打開方式，其取值與標準庫中的open相應參數類似，可以取O_CREAT,O_RDWR,O_RDONLY等
+  - mode：創建文件時使用，設置創建文件的讀寫權限
+
+<h4 id="3.1.3.2">讀寫文件 - kernel_read() & kernel_write()</h4>
+
+```C
+ssize_t kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
+{
+    ssize_t ret;
+
+    ret = rw_verify_area(READ, file, pos, count);
+    if (ret)
+        return ret;
+    return __kernel_read(file, buf, count, pos);
+}
+EXPORT_SYMBOL(kernel_read);
+
+ssize_t kernel_write(struct file *file, const void *buf, size_t count, loff_t *pos)
+{
+    ssize_t ret;
+
+    ret = rw_verify_area(WRITE, file, pos, count);
+    if (ret)
+        return ret;
+
+    file_start_write(file);
+    ret =  __kernel_write(file, buf, count, pos);
+    file_end_write(file);
+    return ret;
+}
+EXPORT_SYMBOL(kernel_write);
+```
+
+<h4 id="3.1.3.3">關閉文件 - filp_close()</h4>
+
+- `int filp_close(struct file*filp, fl_owner_t id);`
+  - 第二個參數一般傳遞NULL值，也有用current->files作為實參的。
+
+- Linux Kernel組成員不贊成在kernel中獨立的讀寫文件（這樣做可能會影響到策略和安全問題），對內核需要的文件內容，最好由應用層配合完成。
+
+<h4 id="3.1.3.4">驅動讀寫範例</h4>
+
+- [kernel_wr_rd_test.c](./code/kernel_wr_rd_test/kernel_wr_rd_test.c)
+
+<h4 id="3.1.3.5">Kernel_Read_txt_Test</h4>
+
+- [kernel_read和kernel_write實例](https://its301.com/article/wangkai6666/121312577)
+
+- 動機：Kernel Driver可以讀取路徑中的txt，進一步修改原先driver內部的數值
+
+    [kernel_rd_test.c](./code/Kernel_Read_txt_Test/kernel_rd_test.c)
+
+<h3 id="3.1.4">dev_get_platdata和dev_get_drvdata</h3>
+
+- dev_get_platdata和dev_get_drvdata獲取的對象是不同的。
+  - dev_get_platdata獲取的是device結構體成員變量的void * platform_data。
+  - dev_get_drvdata獲取的是device結構體struct device_private *成員變量P的成員變量void * driver_data。
+
+- 有與dev_get_drvdata相對應的set函數dev_set_drvdata，但是沒有與dev_get_platdata相對應的set函數，只能直接給該platform_data賦值。
+
+   ```C
+   static inline void *dev_get_platdata(const struct device *dev)
+   {
+      return dev->platform_data;
+   }
+
+   int dev_set_drvdata(struct device *dev, void *data)
+   {
+      int error;
+
+      if (!dev->p) {
+         error = device_private_init(dev);
+         if (error)
+            return error;
+      }
+      dev->p->driver_data = data;
+      return 0;
+   }
+
+   void *dev_get_drvdata(const struct device *dev)
+   {
+      if (dev && dev->p)
+         return dev->p->driver_data;
+      return NULL;
+   }
+
+   static inline void *platform_get_drvdata(const struct platform_device *pdev)
+   {
+      return dev_get_drvdata(&pdev->dev);
+   }
+
+   static inline void platform_set_drvdata(struct platform_device *pdev,
+               void *data)
+   {
+      dev_set_drvdata(&pdev->dev, data);
+   }
+   ```
+
+
+<h2 id="3.2">Char Device Driver</h2>
+
+<h3 id="3.2.1">Simple Example</h3>
+
+[example.c](./code/CharDevice/SimpleExample/example.c)
+
+```Shell
+$ sudo insmod ./example.ko
+$ sudo mknod /dev/example c 60 0
+# /dev/example 是我們要存放檔案的路徑，
+# c 代表 Character Device，
+# 60 是這個驅動程式的 Major ID，
+# 0 是驅動程式的 Minor ID。
+$ sudo chmod 666 /dev/example
+# 為了方便測試，我們把這個 Device 改成所有人都可以讀寫。
+```
+
+<h2 id="3.3">I2C</h2>
+
+<h3 id="3.3.1">i2c-tool</h3>
+
+[Linux Tool : i2c-tools 的使用方法， i2cdetect 、 i2cdump、i2cset](https://b8807053.pixnet.net/blog/post/347698301-linux-tool---%3A--i2c-tools-%E7%9A%84%E4%BD%BF%E7%94%A8%E6%96%B9%E6%B3%95%EF%BC%8C-i2cdetect-%E3%80%81-i)
+
+i2c-tools是一套OpenSource，透過這個tools我們可以透過i2c 介面與 IC 去作溝通
+
+透過你的toolchain去編譯出你板子上可以使用的工具
+
+Command :
+
+- `i2cdetect` ===> 會列出 i2c的 Bus上所有的Device
+
+    ```bash
+    i2cdetect -l     ===> 列出總共有幾個 i2c Bus
+    ```
+
+    ![i2c_img00](./image/I2C/i2c_img00.png)
+
+    ```bash
+    i2cdetect -r -y 1   ===> 列出 Bus 1上的所有Device
+    ```
+
+    ![i2c_img01](./image/I2C/i2c_img01.png)
+
+  - 這樣代表共有兩個裝置掛在 i2c-1 上，其中標示為 UU 的代表該設備有被 偵測到並正在被 kernel driver 使用著，而在這邊顯示 0x50 的就是我們所使用的 EEPROM。
+  - 若想知道 EEPROM 裏面的資 訊，則可以使用 i2cdump 來獲得
+
+- `i2cdump` ===> 會列出 Device上所有的 Register值
+
+    ![i2c_img02](./image/I2C/i2c_img02.png)
+
+    ```bash
+    i2cdump -y 1 0x50
+    ```
+
+    ![i2c_img03](./image/I2C/i2c_img03.png)
+
+  - 這邊 EEPROM 內的資訊都是 0xFF ，這是出廠時的預設狀況，我們可以使用 i2cset 來修改他的數值。
+
+- `i2cset ` ===> 可寫入到某個 Bus上的某個 Device上的 Register值
+
+    ![i2c_img04](./image/I2C/i2c_img04.png)
+
+    ```bash
+    i2cset -f -y 1 0x50 0x12 5
+    ```
+
+  - 再一次使用 i2cdump，你會發現不再是清一色的 0xFF 了
+
+- `i2cget ` ===> 可讀取某個 Bus上的某個 Device上的 Register值
+
+    ![i2c_img05](./image/I2C/i2c_img05.png)
+
+    ```bash
+    i2cget -f -y 1 0x50 0x12
+    ```
+
+i2c-tool若看起來沒有效果，調整printk列印級別即可
+
+```bash
+echo 0 > /proc/sys/kernel/printk
+```
+
+<h3 id="3.3.2">i2c通過調用ioctl來讀寫設備</h3>
+
+[應用上i2c通過調用ioctl來讀寫設備](https://www.twblogs.net/a/5c681126bd9eee01cf3c9a51)
+
+
+- i2c_msg結構體：
+
+   ```C
+   /*
+   * I2C Message - used for pure i2c transaction, also from /dev interface
+   */
+   struct i2c_msg {
+      __u16 addr;	/* slave address			*/
+      unsigned short flags;
+   #define I2C_M_TEN	0x10	/* we have a ten bit chip address	*/
+   #define I2C_M_RD	0x01
+   #define I2C_M_NOSTART	0x4000
+   #define I2C_M_REV_DIR_ADDR	0x2000
+   #define I2C_M_IGNORE_NAK	0x1000
+   #define I2C_M_NO_RD_ACK		0x0800
+      short len;		/* msg length				*/
+      char *buf;		/* pointer to msg data			*/
+   };
+   ```
+
+- i2c_rdwr_ioctl_data結構體：
+
+   ```C
+   /* This is the structure as used in the I2C_RDWR ioctl call */
+   struct i2c_rdwr_ioctl_data {
+      struct i2c_msg *msgs;	/* pointers to i2c_msgs */
+      __u32 nmsgs;			/* number of i2c_msgs */
+   };
+   ```
+
+- 範例：
+
+    ```C
+    #include<stdio.h>
+    #include<linux/types.h>
+    #include<fcntl.h>
+    #include<unistd.h>
+    #include<stdlib.h>
+    #include<sys/types.h>
+    #include<sys/ioctl.h>
+    #include<string.h>
+    #include<linux/i2c.h>
+    #include<linux/i2c-dev.h>
+
+    #define MAX_BYTES            2 
+    #define DEFAULT_I2C_BUS      "/dev/i2c-0"
+
+    int
+    i2c_write(int fd, unsigned int addr, unsigned int offset, unsigned char *buf, unsigned int len)
+    {
+        struct i2c_rdwr_ioctl_data msg_rdwr;
+        struct i2c_msg i2cmsg;
+        int i;
+        char _buf[MAX_BYTES+1];
+
+        if(len>MAX_BYTES)
+        {
+            return -1;
+        }
+
+        if(offset+len>256)
+        {
+            return -1;
+        }
+
+        _buf[0]=offset;
+        for(i=0;i<len;i++)
+        {
+            _buf[1+i]=buf[i];
+            printf("----_writedata:%x------\n",_buf[1+i]);
+        }
+
+        msg_rdwr.msgs = &i2cmsg;
+        msg_rdwr.nmsgs = 1;
+
+        i2cmsg.addr  = addr;
+        i2cmsg.flags = 0;
+        i2cmsg.len   = 1+len;
+        i2cmsg.buf   = _buf;
+
+        if((i=ioctl(fd,I2C_RDWR,&msg_rdwr))<0){
+            perror("ioctl()");
+            fprintf(stderr,"ioctl returned %d\n",i);
+            return -1;
+        }
+
+        return 0;
+    }
+
+    int
+    i2c_read(int fd, unsigned int addr, unsigned int offset, unsigned char *buf, unsigned int len)
+    {
+        struct i2c_rdwr_ioctl_data msg_rdwr;
+        struct i2c_msg i2cmsg;
+        int i;
+
+        if(len>MAX_BYTES)
+        {
+            return -1;
+        }
+
+        if(i2c_write(fd,addr,offset,NULL,0)<0)
+        {
+            return -1;
+        }
+
+        msg_rdwr.msgs = &i2cmsg;
+        msg_rdwr.nmsgs = 1;
+
+        i2cmsg.addr  = addr;
+        i2cmsg.flags = I2C_M_RD;
+        i2cmsg.len   = len;
+        i2cmsg.buf   = buf;
+
+
+        if((i=ioctl(fd,I2C_RDWR,&msg_rdwr))<0){
+            perror("ioctl()");
+            fprintf(stderr,"ioctl returned %d\n",i);
+            return -1;
+        }
+
+        return 0;
+    }
+
+    int main(int argc, char** argv)
+    {
+        printf("----start---------\n");
+
+
+        int fd =open(DEFAULT_I2C_BUS, O_RDWR);
+
+        if (fd< 0) 
+        {
+            printf("open failed/n");
+            return -1;
+        }
+
+        unsigned int addr = 0x36;
+        unsigned int offset = 0x0C;
+        unsigned char writebuf[2]={0x26,0x52};
+        unsigned char readbuf[2];
+        unsigned int len = 2;
+
+        i2c_read(fd,addr,offset,readbuf,len);
+        printf("----i2c_read--write before--buff:%x-----\n",readbuf[0]);
+        printf("----i2c_read--write before--buff:%x-----\n",readbuf[1]);
+
+        memset(readbuf,0,sizeof(readbuf));
+
+        i2c_write(fd,addr,offset,writebuf,len);
+
+        i2c_read(fd,addr,offset,readbuf,len);
+        printf("----i2c_read--write after--buff:%x-----\n",readbuf[0]);
+        printf("----i2c_read--write after--buff:%x-----\n",readbuf[1]);
+        printf("----end---------\n");
+        close(fd);
+        return 0;
+    }
+    ```
+
+    ![i2c_img06](./image/I2C/i2c_img06.png)
+
+<h3 id="3.3.3">Read & Write through i2c from the user-space</h3>
+
+[i2c_lib.h](./code/I2C/i2c_lib.h)
+
+[i2c_lib.c](./code/I2C/i2c_lib.c)
+
+<h1 id="4">快速入門</h1>
 
 [[第1篇]_新學習路線_視頻介紹_資料下載.md](./[第1篇]_新學習路線_視頻介紹_資料下載.md)
 
@@ -1459,7 +2321,7 @@ Available commands:
 
 [[第6篇]_項目實戰.md](./[第6篇]_項目實戰.md)
 
-<h1 id="4">驅動大全</h1>
+<h1 id="5">驅動大全</h1>
 
 [[第7篇]_驅動大全.md](./[第7篇]_驅動大全.md)
 
