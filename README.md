@@ -56,6 +56,7 @@ If there is related infringement or violation of related regulations, please con
     - [FrameBuffer在Linux中的實現和機制](#1.19.1)
     - [應用程序的操作](#1.19.2)
   - [簡單測試Uart通訊是否有通](#1.20)
+  - [Framerate & Screen Hz](#1.21)
 - [Linux Kernel相關知識](#2)
   - [基本系統數據類型](#2.1)
   - [取得kernel log的方式](#2.2)
@@ -1752,6 +1753,14 @@ int main()
     ![tty_img01](./image/tty/tty_img01.PNG)
 
 - 利用這種方式，可以用來簡單測試Uart通訊是否有通
+
+<h2 id="1.21">Framerate & Screen Hz</h2>
+
+Framerate代表處理的幀數
+
+更新率代表顯示螢幕每秒更新的張數頻率，例如60Hz 代表每秒鐘可刷新60 張畫面
+
+![tty_img01](./image/framerate與Hz.png)
 
 <h1 id="2">Linux Kernel相關知識</h1>
 
