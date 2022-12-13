@@ -1566,7 +1566,7 @@ APP透過系統調用函數執行swi, svc指令，來觸發CPU異常，進而導
 
 Frame是幀的意思，buffer是緩衝的意思，這意味Framebuffer是一塊內存，裡面保存著一幀影像的每一個像素的顏色值
 
-假設LCD的解析度是1024x768，每一個像素的顏色用32未來表示，那麼Framebuffer的大小就是(1024x768x32/8=3145728字節)
+假設LCD的解析度是1024x768，每一個像素的顏色用32位來表示，那麼Framebuffer的大小就是(1024x768x32/8=3145728字節)
 
 簡單LCD的操作原理
 1. 驅動程式設置好LCD控制器
@@ -1632,7 +1632,7 @@ struct fb_var_screeninfo {
     __u32 grayscale;            /* 0 = color, 1 = grayscale,*//* >1 = FOURCC*/
     struct fb_bitfield red;     /* bitfield in fb mem if true color, */
     struct fb_bitfield green;   /* else only length is significant */
-    struct fb_bitfield blue;    /* RGB分別用多少未來表示，從哪位開始*/
+    struct fb_bitfield blue;    /* RGB分別用多少位來表示，從哪位開始*/
 
     /*........................*/
 };
@@ -2405,7 +2405,7 @@ POLL/SELECT函數可以監測多個文件, 多個事件
 2. 發什麼： 信號
 3. 發什麼信號： SIGIO(驅動程序要通知應用程序所發的信號)
 4. 怎麼發： 內核裡提供函數
-5. 發給誰： APP，AAP要把自己的進程號告訴驅動
+5. 發給誰： APP，APP要把自己的進程號告訴驅動
 6. APP收到後做什麼： 執行信號處理函數
 7. 信號處理函數和信號之間怎麼掛鉤起來： APP註冊信號處理函數
 

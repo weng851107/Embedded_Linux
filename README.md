@@ -57,6 +57,7 @@ If there is related infringement or violation of related regulations, please con
     - [應用程序的操作](#1.19.2)
   - [簡單測試Uart通訊是否有通](#1.20)
   - [Framerate & Screen Hz](#1.21)
+  - [TeraTerm - TimeStamp](#1.22)
 - [Linux Kernel相關知識](#2)
   - [基本系統數據類型](#2.1)
   - [取得kernel log的方式](#2.2)
@@ -1761,6 +1762,10 @@ Framerate代表處理的幀數
 更新率代表顯示螢幕每秒更新的張數頻率，例如60Hz 代表每秒鐘可刷新60 張畫面
 
 ![tty_img01](./image/framerate與Hz.png)
+
+<h2 id="1.22">TeraTerm - TimeStamp</h2>
+
+https://hackmd.io/@sfRJH1u7S464tSaizL7ZsQ/HJEhdSUPK
 
 <h1 id="2">Linux Kernel相關知識</h1>
 
