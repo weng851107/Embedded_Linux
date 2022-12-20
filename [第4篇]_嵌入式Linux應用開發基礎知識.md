@@ -273,6 +273,8 @@ gcc -o test main.c sub.c
 
 **警告選項(Warning Option)：**
 
+[Options to Request or Suppress Warnings](https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wunused-variable-Werror=unused-variable%1B]8)
+
 `-Wall`
 
 這個選項基本打開了所有需要注意的警告資訊，比如沒有指定類型的聲明、在聲明之前就使用的函數、區域變數除了聲明就沒再使用等。
@@ -280,6 +282,10 @@ gcc -o test main.c sub.c
 ```bash
 gcc -Wall -c main.c
 ```
+
+`-w`: Inhibit all warning messages
+
+`-Werror`: Make all warnings into errors
 
 **調試選項(Debugging Option)：**
 
