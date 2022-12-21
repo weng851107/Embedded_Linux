@@ -102,6 +102,8 @@ If there is related infringement or violation of related regulations, please con
 
 [The Linux Kernel](https://linux-kernel-labs.github.io/refs/heads/master/index.html)
 
+[[野火]i.MX Linux開發實戰指南](https://doc.embedfire.com/linux/imx6/base/zh/latest/index.html)
+
 <h1 id="1">相關知識</h1>
 
 <h2 id="1.1">單片機 & 嵌入式系統</h2>
