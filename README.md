@@ -35,6 +35,7 @@ If there is related infringement or violation of related regulations, please con
     - [fdisk (狀態, 分割, 格式化, 掛載)](#1.13.1)
     - [使用操作(df, mount, du)](#1.13.2)
     - [linux掛載SD卡](#1.13.3)
+    - [linux上把某資料夾掛在某partition](#1.13.4)
   - [Image Sensor](#1.14)
     - [Camera 工作原理介紹](#1.14.1)
     - [Camera 設備組成](#1.14.2)
@@ -1178,6 +1179,36 @@ umount /mnt/mmc
 編輯/etc/init.d/目錄下的rcS文件：vi /etc/init.d/rcS
 在裏面加入一行：mount -t vfat /dev/mmcblk0p1 /mmc
 這樣上電後開發板就會自動掛載SD卡到主目錄的mmc文件夾
+
+<h3 id="1.13.4">linux上把某資料夾掛在某partition</h3>
+
+```Shell
+#!/bin/sh
+
+ST_DEV=/dev/mmcblk0p10
+MOUNT_POINT=/share
+
+init()
+{
+    ls $ST_DEV
+    if [ $? == 0 ]; then
+        FS=`blkid /dev/mmcblk0p10 | awk '{print $4}' | sed 's/'TYPE='/''/g' | sed 's/"//g'`
+        echo "FS=$FS"
+
+        if [ "$FS" != "ext2" ]; then
+            echo "$ST_DEV is not ext2, format it"
+            mkfs.ext2 $ST_DEV
+        else
+            echo "$ST_DEV is ext2, mount it on /mnt"
+        fi
+
+        mount -t ext2 $ST_DEV $MOUNT_POINT
+
+    else
+        echo "cec_mount_storage --> There is no " $ST_DEV
+    fi
+}
+```
 
 <h2 id="1.14">Image Sensor</h2>
 
