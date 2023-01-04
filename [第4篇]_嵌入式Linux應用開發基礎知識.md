@@ -24,6 +24,7 @@
   - [3-8_簡介buildroot](#3.8)
   - [3-9_靜動態庫](#3.9)
   - [3-10_參考範例](#3.10)
+  - [3-11_指示符include](#3.11)
 - [04_文件IO](#4)
   - [4-1_文件IO_讀寫文件](#4.1)
   - [4-2_文件IO_內核接口](#4.2)
@@ -1487,6 +1488,61 @@ Buildroot是Linux平臺上一個構建嵌入式Linux系統的框架。
 [cvTest](./[第4篇]_嵌入式Linux應用開發基礎知識/code/cvTest/Makefile)
 
 [Kernel_Read_Test](./[第4篇]_嵌入式Linux應用開發基礎知識/code/Kernel_Read_Test/Makefile)
+
+<h2 id="3.10">3-11_指示符include</h2>
+
+"include"指示符告訴 make 暫停讀取當前的 Makefile, 而轉去讀取"include"指定的一個或者多個文件, 完成以後再繼續當前 Makefile 的讀取
+
+```Makefile
+include filenames...
+```
+
+- 指示符"include"所在的行可以一個或者多個空格(make程序在處理時將忽略這些空格)開始,切忌不能以 [Tab] 字符開始(如果一行以 [Tab] 字符開始 make 程序將此行作爲一個命令行來處理)
+
+- 指示符"include"和文件名之間、多個文件之間使用空格或者 [Tab] 鍵隔開
+
+FILENAMES 是 shell 所支持的文件名(可以使用通配符)
+
+```Makefile
+include foo *.mk $(bar)
+
+is equivalent to
+
+include foo a.mk b.mk c.mk bish bash
+```
+
+通常指示符"include"用在以下場合
+
+1. 有多個不同的程序, 由不同目錄下的幾個獨立的Makefile來描述其創建或者更新規則，即需要使用一組通用的變量定義或者模式規則
+
+   - 通用的做法是將這些共同使用的變量或者模式規則定義在一個文件中(沒有具體的文件命名限制) ,在需要使用的Makefile中使用指示符"include"來包含此文件
+   - 如Ambarella SDK的make.inc架構即是利用如此
+
+2. 當根據源文件自動產生依賴文件時;我們可以將自動產生的依賴關係保存在另外一個文件中, 主Makefile使用指示符"include"包含這些文件
+
+如果指示符"include"指定的文件不是以斜線開始(絕對路徑, 如/usr/src/Makefile...), 而且當前目錄下也不存在此文件;make將根據文件名試圖在以下幾個目錄下查找
+
+- 查找使用命令行選項"-I"或者"--include-dir"指定的目錄
+- 搜索以下幾個目錄(如果其存在) "/usr/gnu/include" "/usr/local/include"和"/usr/include"
+
+當在這些目錄下都沒有找到"include"指定的文件時, make將會提示一個包含文件未找到的告警提示, 但是不會立刻退出。而是繼續處理Makefile的內容。當完成讀取所有的makefile文件後, make將試圖使用規則來創建通過指示符"include"指定的但未找到的文件, 當不能創建它時(沒有創建這個文件的規則), make將提示致命錯誤並退出。
+
+```Makefile
+Makefile:錯誤的行數:未找到文件名:提示信息(No such file or directory)
+Make: *** No rule to make target ‘<filename>’. Stop
+```
+
+用"-include"來代替"include", 忽略由於包含文件不存在或者無法創建時的錯誤"-"的意思是告訴 make, 忽略此操作的錯誤
+
+```Makefile
+-include filenames...
+```
+
+結論：
+
+- 使用 `include FILENAMES...`, make 程序處理時, 如果"FILENAMES"列表中的任何一個文件不能正常讀取而且不存在一個創建此文件的規則時 make 程序將會提示錯誤並退出。
+- 使用 `-include FILENAMES...` 的情況是, 當所包含的文件不存在或者不存在一個規則去創建它, make 程序會繼續執行, 只有在因爲 makefile 的目標的規則不存在時, 才會提示致命錯誤並退出。
+- 爲了和其它的 make 程序進行兼容。也可以使用 `sinclude` 來代替"-include"(GNU 所支持的方式)  
 
 <h1 id="4">04_文件IO</h1>
 
