@@ -464,6 +464,8 @@ gcc -Wall -c main.c
 
 [Makefile學習教程: 跟我一起寫 Makefile](https://blog.xuite.net/tzeng015/twblog/113272267-Makefile%E5%AD%B8%E7%BF%92%E6%95%99%E7%A8%8B%3A+%E8%B7%9F%E6%88%91%E4%B8%80%E8%B5%B7%E5%AF%AB+Makefile)
 
+[GNU_Make.pdf](./[第4篇]_嵌入式Linux應用開發基礎知識/doc/GNU_Make.pdf)
+
 <h2 id="3.0">3-0_關於gcc、make和CMake的區別</h2>
 
 https://www.cnblogs.com/xuelisheng/p/9988626.html
