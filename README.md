@@ -95,8 +95,26 @@ If there is related infringement or violation of related regulations, please con
     - [i2c-tool](#3.3.1)
     - [i2c通過調用ioctl來讀寫設備](#3.3.2)
     - [Read & Write through i2c from the user-space](#3.3.3)
-- [快速入門](#4)
-- [驅動大全](#5)
+- [Linux下menuconfig與Kconfig基礎知識概要](#4)
+  - [內核基礎](#4.1)
+    - [內核和發行版的區別](#4.1.1)
+    - [內核和驅動的關聯](#4.1.2)
+    - [內核和應用程式、根檔案系統的關聯](#4.1.3)
+    - [linux內核的模組化設計](#4.1.4)
+    - [選擇合適版本的內核](#4.1.5)
+  - [內核設定和編譯原理](#4.2)
+    - [linux內核原始碼目錄結構](#4.2.1)
+    - [內核設定和編譯體驗](#4.2.2)
+    - [內核的設定原理](#4.2.3)
+    - [menuconfig的使用](#4.2.4)
+    - [menuconfig的工作原理](#4.2.5)
+    - [Kconfig檔案詳解](#4.2.6)
+    - [menuconfig的實驗學習思路](#4.2.7)
+  - [常用的Kconfig語法](#4.3)
+    - [簡介](#4.3.1)
+    - [語法](#4.3.2)
+- [快速入門](#5)
+- [驅動大全](#6)
 
 
 <h1 id="0">Note</h1>
@@ -2611,7 +2629,652 @@ echo 0 > /proc/sys/kernel/printk
 
 [i2c_lib.c](./code/I2C/i2c_lib.c)
 
-<h1 id="4">快速入門</h1>
+<h1 id="4">Linux下menuconfig與Kconfig基礎知識概要</h1>
+
+https://tw511.com/a/01/6695.html
+
+https://www.twblogs.net/a/60dd5b405f3d1b1b737f3f30
+
+<h2 id="4.1">內核基礎</h2>
+
+<h3 id="4.1.1">內核和發行版的區別</h3>
+
+什麼是作業系統：
+
+1. linux、windows、android、ucos就是作業系統
+2. 作業系統本質上是一個程式，由很多個原始檔構成，需要編譯連線成作業系統程式（vmlinz、zImage）
+3. 作業系統的主要作用就是管理計算機硬體，給應用程式提供一個執行環境。
+
+作業系統核心功能：
+
+1. 記憶體管理
+
+   - 作業系統負責管控所有的記憶體，所有的應用程式需要使用記憶體時都要向作業系統去申請和註冊，由作業系統的記憶體管理模組來分配記憶體給你使用，這樣好處是可以保證記憶體使用不會衝突。
+
+2. 進程排程
+
+   - 作業系統下支援多個應用程式同時執行（所以可以一邊聊LINE, 一邊看電影···），這是宏觀上的並行。
+   - 宏觀上的並行就是作業系統提供的分時複用機制。作業系統的進程排程模組負責在各個進程之間進行切換。
+
+3. 硬體裝置管理
+
+   - 沒有作業系統時要控制任何硬體都要自己寫程式碼，有了作業系統後作業系統本身會去控制各個硬體，應用程式就不用考慮硬體的具體細節了。
+   - 作業系統的硬體裝置管理模組就是驅動模組。
+
+4. 檔案系統
+
+   - 檔案系統是管理儲存裝置的一種方式。
+   - 儲存裝置是由很多個磁區組成的，每個磁區有512/1024/2048/4096位元組，儲存裝置要以磁區爲單位進行讀寫。
+   - 如果沒有檔案系統，程式要自己去讀寫磁區，就得記得哪個檔案在哪個磁區。
+   - 有了檔案系統之後我們人不用再關注磁區，人只用關注檔案系統中的目錄和檔名，而不用管這個檔案在物理磁碟的哪個磁區。
+
+作業系統擴充套件功能：
+
+1. 協定棧
+2. 有用的應用程式包，如ping程式用來測試網路是否聯通，ifconfig程式用來設定網絡卡
+
+內核和發行版的區別：
+
+- 內核是作業系統內核的簡稱，內核負責實現作業系統的核心功能（資源管理模組，譬如記憶體管理、排程系統······），內核不包括應用程式。
+- 只有內核人是沒辦法用的，因爲人做任何事情都是通過相對應的應用程式來完成的
+- 所以賣作業系統的人把內核和一些常用的應用程式打包在一起提供給普通使用者，這就是作業系統的發行版（也就是普通意義上的作業系統）。
+
+1. 內核只有一個。www.kernel.org
+2. 發行版有很多。譬如ubuntu、redhat、suse、centos······
+
+<h3 id="4.1.2">內核和驅動的關聯</h3>
+
+驅動屬於內核的一部分
+
+1. 驅動就是內核中的硬體裝置管理模組
+2. 驅動工作在內核態
+3. 驅動程式故障可能導致整個內核崩潰
+4. 驅動程式漏洞會使內核不安全
+
+<h3 id="4.1.3">內核和應用程式、根檔案系統的關聯</h3>
+
+內核和應用程式的關係：
+
+- 應用程式不屬於內核，而是在內核之上的
+- 應用程式工作在使用者態，是受限制的
+- 應用程式故障不會導致內核崩潰
+- 應用程式通過內核定義的API介面來呼叫內核工作
+- 總結1：應用程式是最終目標
+- 總結2：內核就是爲應用程式提供底層資源管理的服務員
+
+內核和根檔案系統：
+
+- 根檔案系統提供根目錄
+- 內核啓動時建立內核態的進程1，會掛載根檔案系統並通過exec來從內核態的進程1 進入使用者態的進程1
+- 內核啓動最後會去裝載根檔案系統
+- 總結：根檔案系統爲作業系統啓動提供了很多必備的資源：根目錄、使用者態進程1
+
+<h3 id="4.1.4">linux內核的模組化設計</h3>
+
+模組化設計的目的：**實現功能模組的鬆耦合**
+
+- 內核中各個功能模組在程式碼上是彼此獨立的，譬如說排程系統和記憶體管理系統之間並沒有全域性變數的互相參照，甚至函數互相呼叫也很少，就算有也是遵循一個介面規範的
+
+模組化設計的體現：
+
+- 設定時可裁剪
+- 模組化編譯和安裝
+- 原始碼中使用條件編譯
+
+<h3 id="4.1.5">選擇合適版本的內核</h3>
+
+並不是越新版本的內核越好，選擇SoC廠家移植版本會減少工作量
+
+<h2 id="4.2">內核設定和編譯原理</h2>
+
+<h3 id="4.2.1">linux內核原始碼目錄結構</h3>
+
+原始碼從哪裡來： 我們使用2.6.35.7版本的內核
+
+- 第一種是kernel.org上的官方版本
+- 第二種是三星移植過的
+- 第三種是九鼎X210的移植版本
+
+分析原始碼目錄下的單個檔案：
+
+- Kbuild
+  - 是kernel build的意思，就是內核編譯的意思
+  - linux內核特有的內核編譯體系需要用到的檔案
+- Makefile
+  - linux內核的總makefile，整個內核工程用這個Makefile來管理的
+- mk
+  - 是九鼎在移植時自己新增的，不是linux內核本身的東西
+  - 九鼎新增這個檔案的作用是用這個檔案來管理kernel目錄的設定和編譯
+
+簡單說明linux內核的設定體系：
+
+- linux原始碼的設定是一個很複雜的事情，必須要有一套很複雜的機制來保證linux內核可以被正確的設定 (對比一下uboot，uboot的設定項都是在xxx.h中，用宏定義來表示的。uboot的這種方式很依賴於人的水平，因爲uboot的設定體系很簡單)
+- 所以內核發明了一種體系(圖形化的設定工具menuconfig)用來幫助人進行簡單化的設定
+- Kbuild、Kconfig等檔案，都是和內核的設定體系有關的
+
+---
+
+`arch/`
+
+- arch是architecture的縮寫，意思是架構
+- arch目錄下是好多個不同架構的CPU的子目錄
+  - 如arm這種cpu的所有檔案都在arch/arm目錄下
+  - X86的CPU的所有檔案都在arch/x86目錄下
+
+`block/`
+
+- block目錄下放的是一些linux儲存體系中關於塊裝置管理的程式碼
+- 在linux中block表示塊裝置（以塊（多個位元組組成的整體，類似於磁區）爲單位來整體存取），譬如說SD卡、iNand、Nand、硬碟等都是塊裝置
+
+`crypto/`
+
+- 目錄下放了一些各種常見的加密演算法的C語言程式碼實現。譬如crc32、md5、sha1等
+
+`Documentation/`
+
+- 存放一些文件
+
+`drivers/`
+
+- 驅動目錄
+- 裡面分門別類的列出了linux內核支援的所有硬體裝置的驅動原始碼
+
+`firmware/`
+
+- 韌體，固化到IC裡面執行的軟體
+- 如S5PV210裡的iROM程式碼
+
+`fs/`
+
+- file system，檔案系統
+- 裡面列出了linux支援的各種檔案系統的實現
+
+`include/`
+
+- 標頭檔案目錄，公共的（各種CPU架構共用的）標頭檔案都在這裡
+- 每種CPU架構特有的一些標頭檔案在arch/arm/include目錄及其子目錄下
+
+`init/`
+
+- 初始化
+- 目錄下的程式碼就是linux內核啓動時初始化內核的程式碼
+
+`ipc/`
+
+- inter process commuication，進程間通訊
+- 裡面都是linux支援的IPC的程式碼實現
+
+`kernel/`
+
+- 內核，就是linux內核
+- 資料夾下放的就是內核本身需要的一些程式碼檔案
+
+`lib/`
+
+- 裡面都是一些公用的有用的庫函數，注意這裏的庫函數和C語言的庫函數不一樣的
+- 在內核程式設計中是不能用C語言標準庫函數，這裏的lib目錄下的庫函數就是用來替代那些標準庫函數的
+- 內核中要列印資訊時不能用printf，而要用printk，這個printk就是我們這個lib目錄下的
+
+`mm/`
+
+- memory management，記憶體管理
+- linux的記憶體管理程式碼都在這裡
+
+`net/`
+
+- 目錄下是網路相關的程式碼，譬如TCP/IP協定棧等都在這裡
+
+`scripts/`
+
+- 目錄下全部是指令碼檔案
+- 這些指令碼檔案不是linux內核工作時使用的，而是用來輔助對linux內核進行設定編譯生產的
+
+`security/`
+
+- 安全相關的程式碼
+
+`sound/`
+
+- 音訊處理相關的
+
+`tools/`
+
+- linux中用到的一些有用工具
+
+`usr/`
+
+- 目錄下是initramfs相關的，和linux內核的啓動有關
+
+`virt/`
+
+- 內核虛擬機器相關的
+
+總結：這麼多目錄跟我們關係很緊密的就是arch和drivers目錄，然後其他有點相關的還有include、block、mm、net、lib等目錄。
+
+<h3 id="4.2.2">內核設定和編譯體驗</h3>
+
+先確認Makefile： 檢查交叉編譯工具鏈有沒有設定對
+
+- `CROSS_COMPILE   ?= /usr/local/arm/arm-2009q3/bin/arm-none-linux-gnueabi-`
+- `ARCH = arm` 爲了編譯時能找到arch/arm目錄
+
+make x210ii_qt_defconfig
+
+- 最後只要出現：`configuration written to .config`這句話，就證明我們的操作是正確的。如果沒有出現這句話，就有錯誤
+- 可能出現的錯誤1：名字敲錯了。名字是字串匹配的，一定要正確
+
+make menuconfig
+
+- 可能出現的錯誤1：`ncurses庫`沒裝
+
+    ```bash
+    *** Unable to find the ncurses libraries or the
+    *** required header files.
+    *** 'make menuconfig' requires the ncurses libraries.
+    ***
+    *** Install ncurses (ncurses-devel) and try again.
+    ```
+
+    `sudo apt-get install libncurses5-dev` from http://blog.csdn.net/yao_qinwei/article/details/8805101
+
+- 可能出現的錯誤2：螢幕太小
+
+    ```bash
+    Your display is too small to run Menuconfig!
+    It must be at least 19 lines by 80 columns.
+    ```
+
+    全螢幕，或者是把字型調小
+
+make
+
+- 可能出現的錯誤1：莫名其妙的錯誤，可以試試先make distclean
+- 程式碼本身的錯誤：具體問題具體分析
+- 編譯完成後得到的內核映象不在原始碼樹的根目錄下，在arch/arm/boot這個目錄下。得到的映象名是zImage
+
+<h3 id="4.2.3">內核的設定原理</h3>
+
+設定的關鍵是得到 `.config` 檔案
+
+- .config以.開頭，是一個隱藏檔案，需要`ls -a`來看
+- 當`make distclean`後（也就是說預設情況下）是沒有.config檔案的
+- .config檔案是linux內核在編譯過程中很重要的一個檔案，其作用類似與uboot中的include/configs/x210_sd.h，內核在編譯過程中會讀取.config中的設定項，並且用這些設定項去指導整個編譯鏈接過程
+- .config檔案的格式類似於指令碼檔案，其中內容爲類似於於：`CONFIG_ARM=y`的一個一個的設定項
+- linux內核不像uboot那樣直接手工設定，而是發明了一個圖形化的設定工具menuconfig
+
+`make xx_defconfig` 和 `make menuconfig`互相配合
+
+- 爲了對.config檔案中的兩三千個設定項做逐一合適的設定，專門發明了兩步結合的設定方式
+  - `make xxx_defconfig` 解決的問題是大部分的設定項（這一步結束後99%的設定項就已經正確了）
+  - 對個別不同的開發板透過 `make menuconfig` 進行細節調整
+- `make xxx_defconfig` 這一步其實是參考別人已經做好的，這樣做有很多好處：減少很多工作量，避開了很多自己不懂的設定項（譬如對記憶體管理的、排程系統的等模組的設定項），我們只用管自己需要管的
+- `make menuconfig` 其實就是讀取第一步得到的.config，然後給我們一個圖形化的介面，讓我們可以更加容易的找到自己想要修改的設定項，然後更改設定他。
+
+make xx_defconfig到底做了什麼？
+
+- `make x210ii_qt_defconfig` 其實相當於： `cp arch/arm/configs/x210ii_qt_defconfig .config`
+- arch/arm/configs目錄下的這麼多個xxx_defconfig哪裏來的？ 其實這些檔案都是別人手工設定好適合一定的開發板的.config檔案後自己把.config檔案儲存過去的
+
+<h3 id="4.2.4">menuconfig的使用</h3>
+
+在menuconfig中選項前面的括號裡，*表示編入，空白表示去除，M表示模組化
+
+鍵盤按鍵Y、N、M三個按鍵的作用分別是將選中模組編入、去除、模組化
+
+- 編入就是將這個模組的程式碼直接編譯連線到zImage中
+- 去除就是將這個模組不編譯鏈接到zImage中
+- 模組化是將這個模組仍然編譯，但是不會將其鏈接到zImage中，會將這個模組單獨鏈接成一個內核模組.ko檔案，將來linux系統內核啓動起來後可以動態的載入或解除安裝這個模組
+
+<h3 id="4.2.5">menuconfig的工作原理</h3>
+
+menuconfig本身由一套軟體支援
+
+- `ncurses庫` 是linux中用來實現文字式的圖形介面，linux內核中使用了ncurses庫來提供menuconfig
+- `scripts\kconfig\lxdialog目錄下的一些c檔案` 就是用來提供menuconfig的那些程式原始碼
+
+menuconfig讀取 `Kconfig` 檔案
+
+- menuconfig本身的軟體只負責提供menuconfig工作的這一套邏輯（譬如在menuconfig中通過上下左右箭頭按鍵來調整遊標，Enter ESC鍵等按鍵按下的響應），而並不負責提供內容（選單裡的專案）
+- menuconfig顯示的選單內容（一方面是選單的目錄結構，另一方面是每一個選單專案的細節）是由內核原始碼樹各個目錄下的Kconfig檔案來支援的
+
+menuconfig讀取/寫入 `.config` 檔案
+
+- 每一個選單的選擇結果（Y、N、M）卻不是儲存在Kconfig檔案中的。Kconfig檔案是不變的，Kconfig檔案只是決定有沒有這個選單項，並不管這個選單項的選擇結果
+- make menuconfig開啓時，他會讀取.config檔案，並且用.config檔案中的設定選擇結果來初始化menuconfig中各個選單項的選擇值
+- 總結：選單項的專案內容從 `Kconfig` 檔案來，選單項的選擇值從 `.config` 檔案來
+- 儲存後則會將我們更改過的設定重新寫入 `.config` 檔案中記錄
+
+總結：主要內容就是：`menuconfig` 和 `Kconfig` 和 `.config` 的關係
+
+<h3 id="4.2.6">Kconfig檔案詳解</h3>
+
+Kconfig的格式：
+
+- `#` 開頭的行是註釋行
+- 內核原始碼目錄樹中每一個Kconfig都會 `source` 引入其所有子目錄下的Kconfig，從而保證了所有的Kconfig專案都被包含進menuconfig中
+- `config` 表示選單中的一個設定項
+
+tristate和bool的含義：
+
+- tristate意思是三態（3種狀態，對應Y、N、M三種選擇方式）
+- bool是真或假二選一（對應Y和N）
+
+depends的含義：
+
+- 本設定項依賴於另一個設定項
+- 如果那個依賴的設定項爲Y或者M，則本設定項才有意義；如果依賴的哪個設定項本身被設定爲N，則本設定項根本沒有意義
+- 如果在menuconfig中如果找不到一個選項，但是這個選項在Kconfig中卻是有的，則可能的原因就是這個設定項依賴的一個設定項是不成立的
+- depends並不要求依賴的設定項一定是一個，可以是多個，而且還可以有邏輯運算
+
+Kconfig和.config檔案和Makefile三者的關聯：
+
+- 設定項被設定成Y、N、M會影響 `.config` 檔案中的 `CONFIG_XXX` 變數的設定值
+- 這個 `.config` 中的設定值（=y、=m、沒有）會影響最終的編譯鏈接過程。如果=y則會被編入（built-in），如果=m會被單獨連線成一個ko模組，如果沒有則對應的程式碼不會被編譯。那麼這麼是怎麼實現的？都是通過 `makefile` 實現的
+- `obj-$(CONFIG_DM9000) += dm9000.o`
+  - 如果CONFIG_DM9000變數值爲y，則obj += dm9000.o，因此dm9000.c會被編譯
+  - 如果CONFIG_DM9000變數未定義，則dm9000.c不會被編譯
+  - 如果CONFIG_DM9000變數的值爲m則會被連線成ko模組
+
+總結：把 `menuconfig中的選單項`、`Kconfig中的設定項`、`.config中的一行`、 `Makefile中的一行`，這4個東西結合起來理解，則整個linux內核的設定體系就明瞭了
+
+<h3 id="4.2.7">menuconfig的實驗學習思路</h3>
+
+驗證menuconfig和.config的關係：
+
+- `make menuconfig` 時，會讀取 `.config` 中的設定值來初始化menuconfig中的設定項
+- `menuconfig` 中修改了（按Y、N、M）設定項的值，然後退出時儲存，則這個儲存結果會修改 `.config` 檔案中的相應行
+
+驗證menuconfig和Kconfig的關係：
+
+- `menuconfig` 讀取 `Kconfig` 的內容作爲選單專案內容
+
+驗證menuconfig和Makefile的關係：
+
+- 找一個模組，把他配置成y，然後去make編譯連線，最後得到的zImage中這個模組就應該被編譯連線進去到zImage中了
+
+<h2 id="4.3">常用的Kconfig語法</h2>
+
+<h3 id="4.3.1">簡介</h3>
+
+menuconfig是Linux平台基於Kconfig用於管理代碼工程、模塊及功能的實用工具
+
+- 上至決定某一程序模塊是否編譯
+- 下到某一行具體的代碼是否需要編譯
+- 某個項的值在本次編譯時該是什麼
+
+在系統源代碼根目錄下執行 make menuconfig 命令從而打開一個圖形化配置界面，再通過對各項的值按需配置從而達到影響系統編譯結果的目的
+
+![menuconfig_img00](./image/menuconfig/menuconfig_img00.PNG)
+
+menuconfig 配置後的結果將會保存在對應模塊根目錄下的 .config 文件中，Linux在編譯系統鏡像時會加載這些 .config 文件中的配置項來決定編譯結果
+
+- 如 kernel源碼根目錄 或 應用程序源碼根目錄
+
+`menuconfig` 其實只能算是一個"前端"，用於支撐它、決定它擁有什麼配置項的"後端"則被稱爲 `Kconfig`
+
+Kconfig 嚴格來講是一種編程語言，它擁有自己的語法及結構。正是這些語法和結構組成了menuconfig在用戶眼前不同的表現形式。
+
+<h3 id="4.3.2">語法</h3>
+
+Linux官方提供的幫助文檔於內核源碼目錄下的 `./Document/kbuild/kconfig-language.txt`
+
+所謂 `Kconfig`，其實就是一個位於要被控制的程序模塊源碼目錄下的文件名爲 Kconfig 的普通的文本文件
+
+一般來講，都是在各個程序或模塊的根目錄下創建一個Kconfig用於記錄所有配置該程序/模塊的配置項。然後再在其父級目錄的Kconfig中通過 `souce code_demo/Kconfig` 的形式將其引入到menuconfig系統中去
+
+#### 1. config模塊
+
+一個config就表示一個配置項
+
+```kconfig
+config 配置項名
+    配置項類型
+    配置項提示語
+    其它選項
+```
+
+- **配置項名**：表示最終保存在 .config 文件中的鍵值對項的鍵名，通常用`全大寫`和`單詞之間以下劃線`隔開的形式書寫
+- **配置項類型**就是基礎類型，可選的類型有：bool、tristate、string、hex、int
+  - bool 表示布爾型在.config中以 y 和 n 表示
+  - tristate是三態類型，通常用在內核驅動控制中。在.config中以 y 、n和m表示。y表示將驅動編譯進內核鏡像，n表示不編譯，m表示將驅動編譯爲ko形式
+  - string是普通字符串類型，直接將在menuconfig圖形界面中用戶輸入的值原樣保存在.config中
+  - hex是十六進制形式，只能輸入0~F的內容
+  - int是十進制整數形式，只能輸入數字
+- **配置項提示語**以`prompt開頭`，後跟一個空格字符，然後就是`用雙引號包圍的文字提示語`。作用就是在menuconfig圖形界面中作爲配置項的提示語
+
+    ![menuconfig_img01](./image/menuconfig/menuconfig_img01.PNG)
+
+- **預設值**以 `default` 開頭來設定配置項名的預設值
+  - n, 表示默認不編譯
+  - y, 表示默認編譯進內核
+  - m, 表示默認編譯為模塊
+
+    ```kconfig
+    config MY_CONFIG1
+        bool "my config1"
+        default y
+    ```
+
+- **依賴關係**以 `depends on` 開頭來為一選單選項定義依賴關係，若有多個依賴關係，它們之間用 `&&` 或 `||` 間隔
+
+- **help**爲配置項添加一個更詳細的說明文檔，在menuconfig圖形配置界面通過 ? 鍵來喚出詳細文檔的展示
+
+    ```kconfig
+    config MY_CONFIG1
+        bool
+        prompt "my config1"
+        help
+            I am a help document.
+            This document can be a long length
+    ```
+
+    ![menuconfig_img08](./image/menuconfig/menuconfig_img08.PNG)
+
+Example
+
+- 在目錄menu_demo下新建一個Kconfig文件
+
+    ```kconfig
+    config KCONFIG_DEMO_ITEM1
+        bool
+        prompt "demonstate item1 for bool learning"
+
+    config KCONFIG_DEMO_ITEM2
+        string
+        prompt "demonstate item2 for string learning"
+
+    config KCONFIG_DEMO_ITEM3
+        hex
+        prompt "demonstate item3 for hex learning"
+    ```
+
+- 然後再其父目錄上的Kconfig中將此Kconfig文件加載進來
+
+    ```kconfig
+    #
+    # For a description of the syntax of this configuration file,
+    # see scripts/kbuild/config-language.txt.
+    #
+    mainmenu "Users Configuration"
+
+    # menu "Applications Settings"
+
+    source "menu_demo/Kconfig"
+    ```
+
+    ![menuconfig_img02](./image/menuconfig/menuconfig_img02.PNG)
+
+- 將第一項選上，第二項隨意輸入一個字符串，第三項留空，然後一路退出menuconfig並保存，可以看到.config文件關於我們新增的配置項的內容如下所示：
+
+    ```.config
+    #
+    # Automatically generated make config: don't edit
+    # RLX Linux builder
+    # Wed Jun 30 21:20:58 2021
+    #
+    CONFIG_KCONFIG_DEMO_ITEM1=y
+    CONFIG_KCONFIG_DEMO_ITEM2="hello world"
+    CONFIG_KCONFIG_DEMO_ITEM3=
+    ```
+
+#### 2. menuconfig模塊
+
+config 中的升級版
+
+首先它自己也是一個正常的配置項，通過自己的配置值來決定另外一組配置項是否作爲子菜單的形式顯示出來並供用戶配置
+
+```kconfig
+menuconfig KCONFIG_DEMO_MENUCONFIG1
+    bool
+    prompt "menuconfig learning"
+
+if KCONFIG_DEMO_MENUCONFIG1
+
+config MENUCONFIG_SUBITEM1
+    bool
+    prompt "menuconfig subitem1"
+
+config MENUCONFIG_SUBITEM2
+    bool
+    prompt "menuconfig subitem2"
+
+endif
+```
+
+![menuconfig_img03](./image/menuconfig/menuconfig_img03.PNG)
+
+#### 3. menu模塊
+
+menuconfig 是一個帶了菜單功能的配置項，而 menu 就是一個純粹的菜單項，menu本身不可配置，只是用來標記其內部可能擁有子配置項
+
+```kconfig
+menu "menu learning"
+
+config MENU_SUBITEM1
+        bool
+        prompt "subitem1"
+
+config MENU_SUBITEM2
+        bool
+        prompt "subitem2"
+
+config MENU_SUBITEM3
+        bool
+        prompt "subitem3"
+
+endmenu
+```
+
+![menuconfig_img04](./image/menuconfig/menuconfig_img04.PNG)
+
+menu項在.config中會將菜單提示語作爲註釋一併寫入，如下所示：
+
+```.config
+#
+# Automatically generated make config: don't edit
+# RLX Linux builder
+# Wed Jun 30 21:45:28 2021
+#
+
+#
+# menu learning
+#
+CONFIG_MENU_SUBITEM1=y
+# CONFIG_MENU_SUBITEM2 is not set
+# CONFIG_MENU_SUBITEM3 is not set
+```
+
+#### 4. choice模塊
+
+choice是單選模塊
+
+```kconfig
+choice 
+        bool
+        prompt "choice learning"
+
+config CHOICE_ITEM1
+        bool
+        prompt "choice1"
+
+config CHOICE_ITEM2
+        bool
+        prompt "choice2"
+
+config CHOICE_ITEM3
+        bool
+        prompt "choice3"
+endchoice
+```
+
+![menuconfig_img05](./image/menuconfig/menuconfig_img05.PNG)
+
+#### 5. if與depends on模塊
+
+if 與 depends on 模塊都屬於 config 配置項中的"其它選項"，它們的作用是等價的，都是根據指定的配置項是否被配置來決定本配置項的顯示與否
+
+```kconfig
+config MY_CONFIG1
+        bool
+        prompt "my config1"
+
+config MY_CONFIG2
+        bool
+        prompt "my config2" if MY_CONFIG1
+
+config MY_CONFIG3
+        bool
+        prompt "my config3"
+        depends on MY_CONFIG2
+```
+
+![menuconfig_img06](./image/menuconfig/menuconfig_img06.PNG)
+
+#### 6. comment模塊
+
+爲在其之後的配置項添加註釋說明，且會將說明內容一併寫進 .config 文件中，與menu模塊的註釋一樣
+
+```kconfig
+comment "I am a comment"
+
+config MY_CONFIG1
+        bool
+        prompt "my config1"
+
+config MY_CONFIG2
+        bool
+        prompt "my config2" if MY_CONFIG1
+
+comment "I'm a comment2"
+
+config MY_CONFIG3
+        bool
+        prompt "my config3" 
+        depends on MY_CONFIG2
+```
+
+![menuconfig_img07](./image/menuconfig/menuconfig_img07.PNG)
+
+```.config
+#
+# Automatically generated make config: don't edit
+# RLX Linux builder
+# Wed Jun 30 22:03:01 2021
+#
+
+#
+# I am a comment
+#
+CONFIG_MY_CONFIG1=y
+CONFIG_MY_CONFIG2=y
+
+#
+# I'm a comment2
+#
+# CONFIG_MY_CONFIG3 is not set
+```
+
+<h1 id="5">快速入門</h1>
 
 [[第1篇]_新學習路線_視頻介紹_資料下載.md](./[第1篇]_新學習路線_視頻介紹_資料下載.md)
 
@@ -2625,7 +3288,7 @@ echo 0 > /proc/sys/kernel/printk
 
 [[第6篇]_項目實戰.md](./[第6篇]_項目實戰.md)
 
-<h1 id="5">驅動大全</h1>
+<h1 id="6">驅動大全</h1>
 
 [[第7篇]_驅動大全.md](./[第7篇]_驅動大全.md)
 
