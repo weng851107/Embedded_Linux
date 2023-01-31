@@ -3274,7 +3274,355 @@ CONFIG_MY_CONFIG2=y
 # CONFIG_MY_CONFIG3 is not set
 ```
 
-<h1 id="5">快速入門</h1>
+<h1 id="5">Device-Tree</h1>
+
+[(Website) Article for Linux and the Devicetree](https://docs.kernel.org/devicetree/usage-model.html)
+
+- Open Firmware Device Tree, Devicetree (DT), is a description of hardware that is readable by an operating system so that the operating system doesn’t need to hard code details of the machine.
+
+- Conceptually, a common set of usage conventions, called "bindings", is defined for how data should appear in the tree to describe typical hardware characteristics including data busses, interrupt lines, GPIO connections, and peripheral devices.
+
+- As much as possible, hardware is described using existing bindings to maximize use of existing support code, but since property and node names are simply text strings, it is easy to extend existing bindings or create new ones by defining new nodes and properties.
+
+---
+
+[Linux DTS(Device Tree Source)設備樹詳解 - 背景基礎知識篇](https://e-mailky.github.io/2019-01-14-dts-1)
+
+## 什麼是DTS?
+
+- 採用Device Tree後，許多硬件的細節可以直接透過它傳遞給Linux，而不再需要在kernel中進行大量的冗餘編碼。Device Tree改變了原來用hardcode方式將HW 配置信息嵌入到內核代碼的方法，改用bootloader傳遞一個DB的形式
+
+- 對ARM平台的相關code做出如下相關規範調整，這個也正是引入DTS的原因
+
+    ```Text
+    1. ARM的核心代碼仍然保存在arch/arm目錄下
+    2. ARM SoC core architecture code保存在arch/arm目錄下
+    3. ARM SOC的周邊外設模塊的驅動保存在drivers目錄下
+    4. ARM SOC的特定代碼在arch/arm/mach-xxx目錄下
+    5. ARM SOC board specific的代碼被移除，由DeviceTree機制來負責傳遞硬件拓撲和硬件資源信息。
+    ```
+
+- 對於嵌入式系統，在系統啟動階段，bootloader會加載內核並將控制權轉交給內核，此外， 還需要把下述的三個參數信息傳遞給kernel，以便kernel可以有較大的靈活性
+
+    ```Text
+    1. 識別platform的信息
+    2. runtime的配置參數
+    3. 設備的拓撲結構以及特性
+    ```
+
+## DTS基本知識
+
+### 1. DTS的加載過程
+
+如果要使用Device Tree，首先用戶要了解自己的硬件配置和系統運行參數，並把這些信息組織成Device Tree source file
+
+通過DTC（Device Tree Compiler），可以將這些適合人類閱讀的Device Tree source file變成適合機器處理的Device Tree binary file（DTB，device tree blob）
+
+在系統啟動的時候，boot program （例如：firmware、bootloader）可以將保存在flash中的DTB copy到內存（當然也可以通過其他方式， 例如可以通過bootloader的交互式命令加載DTB，或者firmware可以探測到device的信息，組織成DTB保存在內存中）， 並把DTB的起始地址傳遞給client program（例如OS kernel，bootloader或者其他特殊功能的程序）。對於計算機系統（computer system），一般是firmware->bootloader->OS，對於嵌入式系統，一般是bootloader->OS
+
+![dt_img00](./image/DT/dt_img00.PNG)
+
+### 2. DTS的描述信息
+
+Device Tree由一系列被命名的節點（node）和屬性（property）組成
+
+- 節點本身可包含子節點
+- 屬性就是成對出現的name和value
+
+在Device Tree中，可描述的信息包括（原先這些信息大多被hard code到kernel中）：
+
+```Text
+* CPU的數量和類別
+* 內存基地址和大小
+* 總線和橋
+* 外設連接
+* 中斷控制器和中斷使用情況
+* GPIO控制器和GPIO使用情況
+* Clock控制器和Clock使用情況
+```
+
+它基本上就是畫一棵電路板上CPU、總線、設備組成的樹，Bootloader會將這棵樹傳遞給內核，然後內核可以識別這棵樹， 並根據它展開出Linux內核中的platform_device、i2c_client、spi_device等設備，而這些設備用到的內存、IRQ等資源， 也被傳遞給了內核，內核會將這些資源綁定給展開的相應的設備
+
+Device Tree不需要描述系統中的所有硬件信息，只需描述無法動態識別的設備，如
+
+- USB device，但SOC上的usb hostcontroller，它是無法動態識別的，需要在device tree中描述
+- 在computersystem中，PCI device可以被動態探測到，不需要在device tree中描述，但是PCI bridge如果不能被探測，那麼就需要描述之
+
+`.dts`文件是一種 ASCII文本格式的Device Tree描述
+
+基本上，在ARM Linux在，`一個.dts文件對應一個ARM的machine`，一般放置在`內核的arch/arm/boot/dts/目錄`
+
+由於`一個SoC可能對應多個machine`（一個SoC可以對應多個產品和電路板），勢必這些.dts文件需包含許多共同的部分， Linux內核為了簡化，把SoC公用的部分或者多個machine共同的部分一般提煉為`.dtsi`，類似於C語言的頭文件。其他的machine對應的.dts就include這個.dtsi。
+
+.dtsi也可以include其他的.dtsi，譬如幾乎所有的ARM SoC的.dtsi都引用了`skeleton.dtsi`，即`#include "skeleton.dtsi"` 或者 `/include/ "skeleton.dtsi"`
+
+正常情況下所有的dts文件以及dtsi文件都含有一個根節點 `/`，但Device Tree Compiler會對DTS的node進行合併，最終生成的DTB中只有一個root node
+
+節點名字的格式是node-name@unit-address
+
+- 如果該node沒有reg屬性（後面會描述這個property）， 那麼該節點名字中必須不能包括@和unit-address
+- unit-address的具體格式是和設備掛在那個bus上相關
+  - 對於cpu， 其unit-address就是從0開始編址，以此加一
+  - 對於具體的設備，例如以太網控制器，其unit-address就是寄存器地址
+
+### 3. DTS的組成結構
+
+下面以一個最簡單的machine為例來看如何寫一個.dts文件
+
+```Text
+- 1個雙核ARM Cortex-A9 32位處理器；
+- ARM的local bus上的內存映射區域分佈了
+    - 2個串口（分別位於0x101F1000 和0x101F2000）
+    - GPIO控制器（位於0x101F3000）
+    - SPI控制器（位於0x10115000）
+    - 中斷控制器（位於0x10140000）
+    - 一個external bus橋；
+- External bus橋上又連接了
+    - SMC SMC91111 Ethernet（位於0x10100000）
+    - I2C控制器（位於0x10160000）
+    - 64MB NOR Flash（位於0x30000000）；
+- External bus橋上連接的I2C控制器所對應的I2C總線上又連接了Maxim DS1338實時鐘（I2C地址為0x58）
+```
+
+```dts
+/ {  
+    compatible = "acme,coyotes-revenge";  
+    #address-cells = <1>;  
+    #size-cells = <1>;  
+    interrupt-parent = <&intc>;  
+
+    cpus {  
+        #address-cells = <1>;  
+        #size-cells = <0>;  
+        cpu@0 {  
+            compatible = "arm,cortex-a9";  
+            reg = <0>;  
+        };  
+        cpu@1 {  
+            compatible = "arm,cortex-a9";  
+            reg = <1>;  
+        };  
+    };  
+
+    serial@101f0000 {  
+        compatible = "arm,pl011";  
+        reg = <0x101f0000 0x1000 >;  
+        interrupts = < 1 0 >;  
+    };  
+
+    serial@101f2000 {  
+        compatible = "arm,pl011";  
+        reg = <0x101f2000 0x1000 >;  
+        interrupts = < 2 0 >;  
+    };  
+
+    
+
+    gpio@101f3000 {  
+        compatible = "arm,pl061";  
+        reg = <0x101f3000 0x1000  
+            0x101f4000 0x0010>;  
+        interrupts = < 3 0 >;  
+    };  
+
+    intc: interrupt-controller@10140000 {  
+        compatible = "arm,pl190";  
+        reg = <0x10140000 0x1000 >;  
+        interrupt-controller;  
+        #interrupt-cells = <2>;  
+    };  
+
+    spi@10115000 {  
+        compatible = "arm,pl022";  
+        reg = <0x10115000 0x1000 >;  
+        interrupts = < 4 0 >;  
+    };  
+
+    external-bus {  
+        #address-cells = <2>  
+        #size-cells = <1>;  
+        ranges = <0 0  0x10100000   0x10000     // Chipselect 1, Ethernet  
+                  1 0  0x10160000   0x10000     // Chipselect 2, i2c controller  
+                  2 0  0x30000000   0x1000000>; // Chipselect 3, NOR Flash  
+
+        ethernet@0,0 {  
+            compatible = "smc,smc91c111";  
+            reg = <0 0 0x1000>;  
+            interrupts = < 5 2 >;  
+        };  
+
+        i2c@1,0 {  
+            compatible = "acme,a1234-i2c-bus";  
+            #address-cells = <1>;  
+            #size-cells = <0>;  
+            reg = <1 0 0x1000>;  
+            rtc@58 {  
+                compatible = "maxim,ds1338";  
+                reg = <58>;  
+                interrupts = < 7 3 >;  
+            };  
+        };  
+
+        flash@2,0 {  
+            compatible = "samsung,k8f1315ebm", "cfi-flash";  
+            reg = <2 0 0x4000000>;  
+        };  
+    };  
+
+};
+```
+
+- Linux內核透過root節點 `/` 的compatible 屬性即可判斷它啟動的是什麼machine
+
+- 在.dts文件的每個設備，都有一個compatible屬性，`compatible屬性用於驅動和設備的綁定`
+
+- compatible 屬性是一個字符串的列表， 列表中的第一個字符串表徵了節點代表的確切設備，其後的字符串表徵可兼容的其他設備
+
+    ```dts
+    flash@0,00000000 {  
+        compatible = "arm,vexpress-flash", "cfi-flash";  
+        reg = <0 0x00000000 0x04000000>,  
+        <1 0x00000000 0x04000000>;  
+        bank-width = <4>;  
+    };
+    ```
+
+- `<>` 中的內容是必選項， `[]` 中的則為可選項 ( [@] )
+
+- 如果一個節點描述的設備有地址，則應該給出 `@unit-address`
+
+- 多個相同類型設備節點的name可以一樣， 只要unit-address不同即可，如本例中含有
+  - cpu@0 與 cpu@1
+  - serial@101f0000 與 serial@101f2000
+
+- 設備的unit-address地址也經常在其對應節點的reg屬性中給出
+
+    `reg = <address1 length1 [address2 length2][address3 length3] ... >`
+
+  - 每一組address與length表明了設備使用的一個地址範圍
+  - address為1個或多個32位的整型（即cell）
+  - length則為cell的列表或者為空（若#size-cells = 0）
+  - address和length字段是可變長的，父節點的#address-cells和#size-cells分別決定了子節點的reg屬性的address和length字段的長度
+  - root節點的 #address-cells = <1>; 和 #size-cells =<1>;決定了serial、gpio、spi等節點的address和length字段的長度分別為1
+  - cpus 節點的 #address-cells= <1>; 和 #size-cells =<0>;決定了2個cpu子節點的address為1，而length為空， 於是形成了2個cpu的reg =<0>; 和 reg =<1>;
+  - external-bus節點的 #address-cells= <2>; 和 #size-cells =<1>; 決定了其下的ethernet、i2c、flash的reg字段形如`reg = <0 0 0x1000>;`、`reg = <1 0 0x1000>;` 和 `reg = <2 0 0x4000000>;` 開始的`第一個cell（0、1、2）是對應的片選`，`第2個cell（0，0，0）是相對該片選的基地址`， `第3個cell（0x1000、0x1000、0x4000000）為length`
+  - i2c節點中定義的 #address-cells = <1>; 和 #size-cells =<0>; 又作用到了I2C總線上連接的RTC，它的address字段為 `0x58`，是設備的I2C地址
+
+- root節點的子節點描述的是CPU的視圖，因此root子節點的address區域就直接位於CPU的memory區域。但是， 經過總線橋後的address往往需要經過轉換才能對應的CPU的memory映射。external-bus的ranges屬性定義了經過external-bus橋後的地址範圍如何映射到CPU的memory區域。
+
+    ```dts
+    ranges = <0 0  0x10100000   0x10000         // Chipselect 1, Ethernet  
+            1 0  0x10160000   0x10000         // Chipselect 2, i2c controller  
+            2 0  0x30000000   0x1000000>;     // Chipselect 3, NOR Flash
+    ```
+
+  - ranges是地址轉換錶，其中的每個項目是一個子地址、父地址以及在子地址空間的大小的映射
+  - 映射表中的子地址、 父地址分別採用 子地址空間的#address-cells 和 父地址空間的#address-cells大小
+  - 對於本例而言，子地址空間的#address-cells為2， 父地址空間的#address-cells值為1，因此0 0 0x10100000 0x10000的`前2個cell為external-bus後片選0上偏移0`， `第3個cell表示external-bus後片選0上偏移0的地址空間被映射到CPU的0x10100000位置`，`第4個cell表示映射的大小為0x10000`
+
+Device Tree中還可以中斷連接信息，對於中斷控制器而言，它提供如下屬性：
+
+- `interrupt-controller` – 這個屬性為空，中斷控制器應該加上此屬性表明自己的身份；
+- `#interrupt-cells` – 與 #address-cells 和 #size-cells相似，它表明連接此中斷控制器的設備的interrupts屬性的cell大小
+- `interrupt-parent` - 設備節點透過它來指定它所依附的中斷控制器的phandle，當節點沒有指定interrupt-parent時，則從父級節點繼承。對於本例而言，root節點指定了interrupt-parent= <&intc>;其對應於intc: interrupt-controller@10140000，而root節點的子節點並未指定interrupt-parent，因此它們都繼承了intc，即位於0x10140000的中斷控制器。
+- `interrupts` - 用到了中斷的設備節點透過它指定中斷號、觸發方法等，具體這個屬性含有多少個cell，由它依附的中斷控制器節點的#interrupt-cells屬性決定。而具體每個cell又是什麼含義，一般由驅動的實現決定，而且也會在Device Tree的binding文檔中說明
+
+  - 對於ARM GIC中斷控制器而言，#interrupt-cells為3，它3個cell的具體含義在kernel/Documentation/devicetree/bindings/arm/gic.txt就有如下文字說明：
+
+    ![dt_img01](./image/DT/dt_img01.PNG)
+
+  - PPI(Private peripheral interrupt), SPI(Shared peripheral interrupt)
+  - 對於ARM GIC而言，若某設備使用了SPI的168、169號2個中斷，而言都是高電平觸發， 則該設備結點的interrupts屬性可定義為：interrupts =<0 168 4>, <0 169 4>;
+
+### 4. dts引起BSP和driver的變更
+
+沒有使用dts之前的BSP和driver
+
+![dt_img02](./image/DT/dt_img02.PNG)
+
+使用dts之後的driver
+
+![dt_img03](./image/DT/dt_img03.PNG)
+
+- rtk_gpio_ctl_mlk這個是node的名字，自己可以隨便定義，當然最好是見名知意，可以通過驅動程序打印當前使用的設備樹節點 `printk(“now dts node name is %s\n”,pdev->dev.of_node->name);`
+- compatible選項是用來和驅動程序中的of_match_table指針所指向的of_device_id結構裡的compatible字段匹配的，`只有dts裡的compatible字段的名字和驅動程序中of_device_id裡的compatible字段的名字一樣，驅動程序才能進入probe函數`
+- 對於gpios這個字段，
+  1. `&rtk_iso_gpio指明了這個gpio是連接到的是rtk_iso_gpio`
+  2. `8 是gpio number偏移量，它是以rtk_iso_gpiobase為基準的`
+  3. `0 說明目前配置的gpio number 是設置成輸入input, 如果是 1 就是設置成輸出output`
+  4. `最後一個字段 1 是指定這個gpio 默認為高電平，如果是 0 則是指定這個gpio默認為低電平`
+- 如果驅動裡面只是利用compatible字段進行匹配進入probe函數，那麼gpios 可以不需要，但是如果驅動程序裡面是採用設備樹相關的方法進行操作獲取gpio number,那麼gpios這個字段必須使用
+  - 獲取gpio number的函數如下： `of_get_named_gpio_flags()`, `of_get_gpio_flags()`
+
+Device Tree中的I2C client會透過I2C host驅動的probe()函數中調用 `of_i2c_register_devices(&i2c_dev->adapter);` 被自動展開
+
+```dts
+i2c@1,0 {
+        compatible = "acme,a1234-i2c-bus";  
+        …  
+        rtc@58 {
+            compatible = "maxim,ds1338";
+            reg = <58>;
+            interrupts = < 7 3 >;
+        };
+    }; 
+```
+
+### 5. 常見的 DTS 函數
+
+Linux內核中目前DTS相關的函數都是以 `of_` 前綴開頭的，它們的實現位於 `內核源碼的drivers/of` 下面
+
+```C
+void __iomem*of_iomap(struct device_node *node, int index)
+```
+
+- 若設備結點的reg屬性有多段，可通過index標示要ioremap的是哪一段， 只有1段的情況，index為0。採用Device Tree後，大量的設備驅動通過of_iomap()進行映射，而不再通過傳統的ioremap。
+
+```C
+int of_get_named_gpio_flags(struct device_node *np,const char *propname,
+            int index, enum of_gpio_flags *flags)
+ 
+static inline int of_get_gpio_flags(structdevice_node *np, int index, 
+            enum of_gpio_flags *flags)
+{                  
+    return of_get_named_gpio_flags(np, "gpios", index,flags);
+}
+```
+
+- 從設備樹中讀取相關GPIO的配置編號和標誌,返回值為gpio number
+
+### 6. DTC (device tree compiler)
+
+將.dts編譯為.dtb的工具
+
+DTC的源代碼位於內核的 `scripts/dtc` 目錄，在Linux內核使能了Device Tree的情況下， 編譯內核的時候主機工具dtc會被編譯出來，對應 `scripts/dtc/Makefile` 中的"`hostprogs-y := dtc`"這一hostprogs編譯target
+
+在Linux內核的 `arch/arm/boot/dts/Makefile` 中，描述了當某種SoC被選中後，哪些.dtb文件會被編譯出來，如與VEXPRESS對應的.dtb包括：
+
+```Makefile
+dtb-$(CONFIG_ARCH_VEXPRESS) += vexpress-v2p-ca5s.dtb \
+                               vexpress-v2p-ca9.dtb \
+                               vexpress-v2p-ca15-tc1.dtb \
+                               vexpress-v2p-ca15_a7.dtb \
+                               xenvm-4.2.dtb
+```
+
+在Linux下，我們可以單獨編譯Device Tree文件。當我們在Linux內核下運行 `make dtbs` 時，若我們之前選擇了ARCH_VEXPRESS， 上述.dtb都會由對應的.dts編譯出來。因為arch/arm/Makefile中含有一個dtbs編譯target項目。
+
+
+
+
+---
+
+https://www.devicetree.org/specifications/
+
+
+
+
+
+
+
+<h1 id="6">快速入門</h1>
 
 [[第1篇]_新學習路線_視頻介紹_資料下載.md](./[第1篇]_新學習路線_視頻介紹_資料下載.md)
 
@@ -3288,7 +3636,7 @@ CONFIG_MY_CONFIG2=y
 
 [[第6篇]_項目實戰.md](./[第6篇]_項目實戰.md)
 
-<h1 id="6">驅動大全</h1>
+<h1 id="7">驅動大全</h1>
 
 [[第7篇]_驅動大全.md](./[第7篇]_驅動大全.md)
 
