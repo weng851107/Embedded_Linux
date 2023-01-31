@@ -3609,8 +3609,13 @@ dtb-$(CONFIG_ARCH_VEXPRESS) += vexpress-v2p-ca5s.dtb \
 
 在Linux下，我們可以單獨編譯Device Tree文件。當我們在Linux內核下運行 `make dtbs` 時，若我們之前選擇了ARCH_VEXPRESS， 上述.dtb都會由對應的.dts編譯出來。因為arch/arm/Makefile中含有一個dtbs編譯target項目。
 
+---
 
+[Linux DTS(Device Tree Source)設備樹詳解 - dts匹配及發揮作用的流程篇](https://e-mailky.github.io/2019-01-14-dts-2)
 
+一個dts文件確定一個項目，多個項目可以包含同一個dtsi文件
+
+找到該項目對應的dts文件即找到了該設備樹的根節點 `kernel\arch\arm\boot\dts\qcom\sdm630-mtp.dts`
 
 ---
 
