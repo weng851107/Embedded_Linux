@@ -125,6 +125,12 @@ If there is related infringement or violation of related regulations, please con
       - [6. DTC (device tree compiler)](#5.1.2.6)
     - [DTS中相關符號的含義](#5.1.3)
     - [DTS中(地址, 中斷)屬性解釋](#5.1.4)
+    - [DTS設備樹描述文件中什麼代表總線，什麼代表設備](#5.1.5)
+    - [DTS描述的設備樹是如何通過register_device進行設備掛載的](#5.1.6)
+      - [1. arch/arm/mach-xxx/xxx.c](#5.1.6.1)
+      - [2. drivers/of/platform.c](#5.1.6.2)
+    - [查看掛載上的所有設備](#5.1.7)
+    - [高通MSM8953實例分析](#5.1.8)
 - [快速入門](#6)
 - [驅動大全](#7)
 
@@ -3304,6 +3310,8 @@ CONFIG_MY_CONFIG2=y
 
 [Linux DTS(Device Tree Source)設備樹詳解 - dts匹配及發揮作用的流程篇](https://e-mailky.github.io/2019-01-14-dts-2)
 
+[Linux DTS(Device Tree Source)設備樹詳解之三(高通MSM8953實例分析篇)](https://e-mailky.github.io/2019-01-14-dts-3)
+
 <h3 id="5.1.1">什麼是DTS?</h3>
 
 - 採用Device Tree後，許多硬件的細節可以直接透過它傳遞給Linux，而不再需要在kernel中進行大量的冗餘編碼。Device Tree改變了原來用hardcode方式將HW 配置信息嵌入到內核代碼的方法，改用bootloader傳遞一個DB的形式
@@ -3717,8 +3725,347 @@ SPI設備的地址範圍是0x10115000~0x10116000
 
 **中斷**
 
+描述中斷連接需要四個屬性：
 
+1. `interrupt-controller` 一個空屬性用來聲明這個node接收中斷信號；
+2. `#interrupt-cells` 這是中斷控制器節點的屬性，用來標識這個控制器需要幾個單位做中斷描述符；
+3. `interrupt-parent` 標識此設備節點屬於哪一個中斷控制器，如果沒有設置這個屬性，會自動依附父節點的；
+4. `interrupts` 一個中斷標識符列表，表示每一個中斷輸出信號。一般有二個cell的情況
+   - 第一個值：中斷號，該中斷位於他的中斷控制器的索引
+   - 第二個值：觸發的類型
+     - 1 = low-to-high edge triggered
+     - 2 = high-to-low edge triggered
+     - 4 = active high level-sensitive
+     - 8 = active low level-sensitive
+   - 第三個值：優先級，0級是最高的，7級是最低的；其中0級的中斷系統當做FIQ處理。
 
+**其他**
+
+新的設備屬性一定要以廠家名字做前綴，這樣就可以避免他們會和當前的標準屬性存在命名衝突問題；
+
+新加的屬性具體含義以及子節點必須加以文檔描述，這樣設備驅動開發者就知道怎麼解釋這些數據了
+
+新添加的這些要發送到devicetree-discuss\@lists.ozlabs.org郵件列表中進行review，並且檢查是否會在將來引發其他的問題
+
+<h3 id="5.1.5">DTS設備樹描述文件中什麼代表總線，什麼代表設備</h3>
+
+設備：一個含有compatible屬性的節點就是一個設備。
+
+總線：包含一組設備節點的父節點即為總線
+
+<h3 id="5.1.6">DTS描述的設備樹是如何通過register_device進行設備掛載的</h3>
+
+在 `arch/arm/mach- ** / ** .c` 找到 `DT_MACHINE_START` 和 `MACHINE_END` 宏, 如下:
+
+```C
+DT_MACHINE_START(******_DT, "************* SoC (Flattened DeviceTree)")
+    .atag_offset    = 0x100,
+    .dt_compat    =******_dt_compat,             // 匹配dts
+    .map_io        =******_map_io,               // 板级地址内存映射, linux mmu
+    .init_irq    =irqchip_init,                  // 板级中断初始化.
+    .init_time    =******_timer_and_clk_init,    // 板级时钟初始化,如ahb,apb等 
+    .init_machine   = ******_dt_init,            // 这里是解析dts文件入口.
+    .restart    =******_restart,                 // 重启, 看门狗寄存器相关可以在这里设置
+MACHINE_END
+```
+
+- `.dt_compat = ** _dt_compat` 這個結構體是匹配是哪個dts文件
+
+    ```C
+    static const char * const ******_dt_compat[] = {
+        "******,******-soc",
+        NULL
+    };
+    ```
+
+- `"** , ** -soc"` 字符串可以在我們的dts的根節點下可以找到
+
+<h4 id="5.1.6.1">1. arch/arm/mach-xxx/xxx.c</h4>
+
+`void __init xxxxx_dt_init(void)`： 这里是解析dts文件入口
+
+- 在此函數中會呼叫 `of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);`
+- 且 `of_default_bus_match_table` 這個是 `struct of_device_id` 的全局變量
+
+    ```C
+    const struct of_device_id of_default_bus_match_table[] = {
+        { .compatible = "simple-bus",},
+    #ifdef CONFIG_ARM_AMBA
+        { .compatible = "arm,amba-bus",},
+    #endif /* CONFIG_ARM_AMBA */
+        {} /* Empty terminated list */
+
+    };
+    ```
+
+- 在設計dts時, 把一些需要指定寄存器基地址的設備放到以compatible = "simple-bus" 為匹配項的設備節點下
+
+<h4 id="5.1.6.2">2. drivers/of/platform.c</h4>
+
+上方 `xxxxx_dt_init(void)` 呼叫的 `of_platform_populate(NULL,of_default_bus_match_table, NULL, NULL);` 會再進一步呼叫 `of_platform_bus_create(…)`，但會先透過 `of_get_property(bus,”compatible”, NULL)` 判別是否有compatible，如果沒有，返回，繼續下一個，也就是說沒有compatible，這個設備不會被註冊
+
+```C
+/**
+ * of_platform_populate() - Populate platform_devices from device tree data
+ * @root: parent of the first level to probe or NULL for the root of the tree
+ * @matches: match table, NULL to use the default
+ * @lookup: auxdata table for matching id and platform_data with device nodes
+ * @parent: parent to hook devices from, NULL for toplevel
+ *
+ * Similar to of_platform_bus_probe(), this function walks the device tree
+ * and creates devices from nodes.  It differs in that it follows the modern
+ * convention of requiring all device nodes to have a 'compatible' property,
+ * and it is suitable for creating devices which are children of the root
+ * node (of_platform_bus_probe will only create children of the root which
+ * are selected by the @matches argument).
+ *
+ * New board support should be using this function instead of
+ * of_platform_bus_probe().
+ *
+ * Returns 0 on success, < 0 on failure.
+ */
+int of_platform_populate(struct device_node *root,
+                const struct of_device_id *matches,
+                const struct of_dev_auxdata *lookup,
+                struct device *parent)
+{
+    struct device_node *child;
+    int rc = 0;
+
+    root = root ? of_node_get(root) : of_find_node_by_path("/");
+    if (!root)
+        return -EINVAL;
+
+    pr_debug("%s()\n", __func__);
+    pr_debug(" starting at: %pOF\n", root);
+
+    for_each_child_of_node(root, child) {
+        rc = of_platform_bus_create(child, matches, lookup, parent, true);
+        if (rc) {
+            of_node_put(child);
+            break;
+        }
+    }
+    of_node_set_flag(root, OF_POPULATED_BUS);
+
+    of_node_put(root);
+    return rc;
+}
+EXPORT_SYMBOL_GPL(of_platform_populate);
+```
+
+- 論詢dts根節點下的總線(子設備), 每個(總線)子設備都要 `of_platform_bus_create(…);`，總線下的每個節點設備也會再 `of_platform_bus_create(…);`
+- 全部完成後, 通過 `of_node_put(root);` 釋放根節點, 因為已經處理完畢;
+
+```C
+/**
+ * of_platform_bus_create() - Create a device for a node and its children.
+ * @bus: device node of the bus to instantiate
+ * @matches: match table for bus nodes
+ * @lookup: auxdata table for matching id and platform_data with device nodes
+ * @parent: parent for new device, or NULL for top level.
+ * @strict: require compatible property
+ *
+ * Creates a platform_device for the provided device_node, and optionally
+ * recursively create devices for all the child nodes.
+ */
+static int of_platform_bus_create(struct device_node *bus,
+                const struct of_device_id *matches,
+                const struct of_dev_auxdata *lookup,
+                struct device *parent, bool strict)
+{
+    const struct of_dev_auxdata *auxdata;
+    struct device_node *child;
+    struct platform_device *dev;
+    const char *bus_id = NULL;
+    void *platform_data = NULL;
+    int rc = 0;
+
+    /* Make sure it has a compatible property */
+    if (strict && (!of_get_property(bus, "compatible", NULL))) {
+        pr_debug("%s() - skipping %pOF, no compatible prop\n",
+                __func__, bus);
+        return 0;
+    }
+
+    /* Skip nodes for which we don't want to create devices */
+    if (unlikely(of_match_node(of_skipped_node_table, bus))) {
+        pr_debug("%s() - skipping %pOF node\n", __func__, bus);
+        return 0;
+    }
+
+    if (of_node_check_flag(bus, OF_POPULATED_BUS)) {
+        pr_debug("%s() - skipping %pOF, already populated\n",
+            __func__, bus);
+        return 0;
+    }
+
+    auxdata = of_dev_lookup(lookup, bus);
+    if (auxdata) {
+        bus_id = auxdata->name;
+        platform_data = auxdata->platform_data;
+    }
+
+    if (of_device_is_compatible(bus, "arm, primecell")) {
+        /*
+            * Don't return an error here to keep compatibility with older
+            * device tree files.
+            */
+        of_amba_device_create(bus, bus_id, platform_data, parent);
+        return 0;
+    }
+
+    // 就是匹配
+    // dt_compat    = ******_dt_compat, 也就是 compatible = "simple-bus", 
+    // 如果匹配成功, 以本节点为父节点, 继续轮询本节点下的所有子节点
+    dev = of_platform_device_create_pdata(bus, bus_id, platform_data, parent);
+    if (!dev || !of_match_node(matches, bus))
+        return 0;
+
+    for_each_child_of_node(bus, child) {
+        pr_debug("   create child: %pOF\n", child);
+        // dev->dev以本节点为父节点
+        rc = of_platform_bus_create(child, matches, lookup, &dev->dev, strict);
+        if (rc) {
+            of_node_put(child);
+            break;
+        }
+    }
+    of_node_set_flag(bus, OF_POPULATED_BUS);
+    return rc;
+}
+```
+
+- `of_platform_device_create_pdata(…)`
+
+    ```C
+    /**
+    * of_platform_device_create_pdata - Alloc, initialize and register an of_device
+    * @np: pointer to node to create device for
+    * @bus_id: name to assign device
+    * @platform_data: pointer to populate platform_data pointer with
+    * @parent: Linux device model parent device.
+    *
+    * Returns pointer to created platform device, or NULL if a device was not
+    * registered.  Unavailable devices will not get registered.
+    */
+    static struct platform_device *of_platform_device_create_pdata(
+                    struct device_node *np,
+                    const char *bus_id,
+                    void *platform_data,
+                    struct device *parent)
+    {
+        struct platform_device *dev;
+        
+        // 查看节点是否有效, 如果节点有'status'属性, 必须是okay或者是ok, 才是有效, 没有'status'属性, 也有效
+        if (!of_device_is_available(np) ||
+            of_node_test_and_set_flag(np, OF_POPULATED))
+            return NULL;
+
+        // alloc设备, 设备初始化. 返回dev, 所有的设备都可认为是platform_device
+        dev = of_device_alloc(np, bus_id, parent);
+        if (!dev)
+            goto err_clear_flag;
+
+        dev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
+        if (!dev->dev.dma_mask)
+            dev->dev.dma_mask = &dev->dev.coherent_dma_mask;
+        dev->dev.bus = &platform_bus_type;
+        dev->dev.platform_data = platform_data;
+        of_msi_configure(&dev->dev, dev->dev.of_node);
+
+        // 注册device, of_device_add(...) --> device_add(...) // This is part 2 of device_register()
+        if (of_device_add(dev) != 0) {
+            platform_device_put(dev);
+            goto err_clear_flag;
+        }
+
+        return dev;
+
+    err_clear_flag:
+        of_node_clear_flag(np, OF_POPULATED);
+        return NULL;
+    }
+    ```
+
+- `of_device_alloc(…)`
+
+    ```C
+    struct platform_device *of_device_alloc(struct device_node *np, const char *bus_id,
+                    struct device *parent)
+    {
+        struct platform_device *dev;
+        int rc, i, num_reg = 0, num_irq;
+        struct resource *res, temp_res;
+
+        dev = platform_device_alloc("", PLATFORM_DEVID_NONE);
+        if (!dev)
+            return NULL;
+
+        /* count the io and irq resources */
+        while (of_address_to_resource(np, num_reg, &temp_res) == 0)
+            num_reg++;
+        num_irq = of_irq_count(np);
+
+        /* Populate the resource table */
+        if (num_irq || num_reg) {
+            res = kcalloc(num_irq + num_reg, sizeof(*res), GFP_KERNEL);
+            if (!res) {
+                platform_device_put(dev);
+                return NULL;
+            }
+
+            dev->num_resources = num_reg + num_irq;
+            dev->resource = res;
+            for (i = 0; i < num_reg; i++, res++) {
+                rc = of_address_to_resource(np, i, res);
+                WARN_ON(rc);
+            }
+            if (of_irq_to_resource_table(np, res, num_irq) != num_irq)
+                pr_debug("not all legacy IRQ resources mapped for %pOFn\n",
+                        np);
+        }
+
+        dev->dev.of_node = of_node_get(np);
+        dev->dev.fwnode = &np->fwnode;
+        dev->dev.parent = parent ? : &platform_bus;
+
+        if (bus_id)
+            dev_set_name(&dev->dev, "%s", bus_id);
+        else
+            of_device_make_bus_id(&dev->dev);
+
+        return dev;
+    }
+    EXPORT_SYMBOL(of_device_alloc);
+    ```
+
+  - alloc `platform_device *dev`
+  - 如果有 `reg` 和 `interrupts` 的相關屬性, 運行 `of_address_to_resource` 和 `of_irq_to_resource_table` 加入到dev->resource
+  - `dev->dev.of_node = of_node_get(np);`
+    - 這個node屬性裡有compatible屬性, 這個屬性從dts來, 後續driver匹配device時, 就是通過這一屬性進匹配
+    - 透過 `of_get_property(...)` 查看 compatible，`printk("[%s %s %d]bus->name = %s, of_get_property(…) = %s\n", __FILE__, __func__, __LINE__, np->name, (char*)of_get_property(np, "compatible", NULL));`
+    - node 再給dev, 後續給驅動註冊使用
+  - 運行 `of_device_make_bus_id` 設定device的名字, 如: soc.2 或ac000000.serial 等
+
+以 `compatible = "simple-bus"`的節點的子節點都會以這個節點作為父節點在這步註冊設備. 至此從dts文件的解析到最終調用 `of_device_add` 進行設備註冊的過程就比較清晰了
+
+<h3 id="5.1.7">查看掛載上的所有設備</h3>
+
+`ls /sys/devices/` 查看註冊成功的設備對應devicetree中的設備描述節點
+
+<h3 id="5.1.8">高通MSM8953實例分析</h3>
+
+以高通的MSM8953平台為例來添加一個基礎的i2c設備（包含一個gpio中斷）
+
+該i2c設備的驅動中找到了匹配設備與驅動程序的compatible
+
+```C
+static const struct of_device_id iqs263_of_match[] = {
+    { .compatible = "azopteq,iqs263", },
+    { },
+}
+```
 
 
 
