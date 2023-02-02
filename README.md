@@ -113,8 +113,20 @@ If there is related infringement or violation of related regulations, please con
   - [常用的Kconfig語法](#4.3)
     - [簡介](#4.3.1)
     - [語法](#4.3.2)
-- [快速入門](#5)
-- [驅動大全](#6)
+- [Device-Tree](#5)
+  - [(Blog)Linux DTS(Device Tree Source)設備樹詳解](#5.1)
+    - [什麼是DTS?](#5.1.1)
+    - [DTS基本知識](#5.1.2)
+      - [1. DTS的加載過程](#5.1.2.1)
+      - [2. DTS的描述信息](#5.1.2.2)
+      - [3. DTS的組成結構](#5.1.2.3)
+      - [4. dts引起BSP和driver的變更](#5.1.2.4)
+      - [5. 常見的 DTS 函數](#5.1.2.5)
+      - [6. DTC (device tree compiler)](#5.1.2.6)
+    - [DTS中相關符號的含義](#5.1.3)
+    - [DTS中(地址, 中斷)屬性解釋](#5.1.4)
+- [快速入門](#6)
+- [驅動大全](#7)
 
 
 <h1 id="0">Note</h1>
@@ -3286,9 +3298,13 @@ CONFIG_MY_CONFIG2=y
 
 ---
 
+<h2 id="5.1">(Blog)Linux DTS(Device Tree Source)設備樹詳解</h2>
+
 [Linux DTS(Device Tree Source)設備樹詳解 - 背景基礎知識篇](https://e-mailky.github.io/2019-01-14-dts-1)
 
-## 什麼是DTS?
+[Linux DTS(Device Tree Source)設備樹詳解 - dts匹配及發揮作用的流程篇](https://e-mailky.github.io/2019-01-14-dts-2)
+
+<h3 id="5.1.1">什麼是DTS?</h3>
 
 - 採用Device Tree後，許多硬件的細節可以直接透過它傳遞給Linux，而不再需要在kernel中進行大量的冗餘編碼。Device Tree改變了原來用hardcode方式將HW 配置信息嵌入到內核代碼的方法，改用bootloader傳遞一個DB的形式
 
@@ -3310,9 +3326,9 @@ CONFIG_MY_CONFIG2=y
     3. 設備的拓撲結構以及特性
     ```
 
-## DTS基本知識
+<h3 id="5.1.2">DTS基本知識</h3>
 
-### 1. DTS的加載過程
+<h4 id="5.1.2.1">1. DTS的加載過程</h4>
 
 如果要使用Device Tree，首先用戶要了解自己的硬件配置和系統運行參數，並把這些信息組織成Device Tree source file
 
@@ -3322,7 +3338,8 @@ CONFIG_MY_CONFIG2=y
 
 ![dt_img00](./image/DT/dt_img00.PNG)
 
-### 2. DTS的描述信息
+
+<h4 id="5.1.2.2">2. DTS的描述信息</h4>
 
 Device Tree由一系列被命名的節點（node）和屬性（property）組成
 
@@ -3365,7 +3382,7 @@ Device Tree不需要描述系統中的所有硬件信息，只需描述無法動
   - 對於cpu， 其unit-address就是從0開始編址，以此加一
   - 對於具體的設備，例如以太網控制器，其unit-address就是寄存器地址
 
-### 3. DTS的組成結構
+<h4 id="5.1.2.3">3. DTS的組成結構</h4>
 
 下面以一個最簡單的machine為例來看如何寫一個.dts文件
 
@@ -3534,7 +3551,7 @@ Device Tree中還可以中斷連接信息，對於中斷控制器而言，它提
   - PPI(Private peripheral interrupt), SPI(Shared peripheral interrupt)
   - 對於ARM GIC而言，若某設備使用了SPI的168、169號2個中斷，而言都是高電平觸發， 則該設備結點的interrupts屬性可定義為：interrupts =<0 168 4>, <0 169 4>;
 
-### 4. dts引起BSP和driver的變更
+<h4 id="5.1.2.4">4. dts引起BSP和driver的變更</h4>
 
 沒有使用dts之前的BSP和driver
 
@@ -3568,7 +3585,7 @@ i2c@1,0 {
     }; 
 ```
 
-### 5. 常見的 DTS 函數
+<h4 id="5.1.2.5">5. 常見的 DTS 函數</h4>
 
 Linux內核中目前DTS相關的函數都是以 `of_` 前綴開頭的，它們的實現位於 `內核源碼的drivers/of` 下面
 
@@ -3591,7 +3608,7 @@ static inline int of_get_gpio_flags(structdevice_node *np, int index,
 
 - 從設備樹中讀取相關GPIO的配置編號和標誌,返回值為gpio number
 
-### 6. DTC (device tree compiler)
+<h4 id="5.1.2.6">6. DTC (device tree compiler)</h4>
 
 將.dts編譯為.dtb的工具
 
@@ -3609,13 +3626,101 @@ dtb-$(CONFIG_ARCH_VEXPRESS) += vexpress-v2p-ca5s.dtb \
 
 在Linux下，我們可以單獨編譯Device Tree文件。當我們在Linux內核下運行 `make dtbs` 時，若我們之前選擇了ARCH_VEXPRESS， 上述.dtb都會由對應的.dts編譯出來。因為arch/arm/Makefile中含有一個dtbs編譯target項目。
 
----
+<h3 id="5.1.3">DTS中相關符號的含義</h3>
 
-[Linux DTS(Device Tree Source)設備樹詳解 - dts匹配及發揮作用的流程篇](https://e-mailky.github.io/2019-01-14-dts-2)
+- `/` - 根節點
+- `@` - 如果設備有地址，則由此符號指定
+- `&` - 引用節點
+- `:` - 冒號前的label是為了方便引用給節點起的別名，此label一般使用為&label
+- `,` - 屬性名稱中可以包含逗號。如compatible屬性的名字組成方式為 "[manufacturer], [model]"，加入廠商名是為了避免重名。自定義屬性名中通常也要有廠商名，並以逗號分隔
+- `#` - #並不表示註釋。如#address-cells ，#size-cells 用來決定reg屬性的格式
+- ` ` - 空屬性並不一定表示沒有賦值。如interrupt-controller 一個空屬性用來聲明這個node接收中斷信號數據類型
+- `""` - 引號中的為字符串，字符串數組："strint1", "string2", "string3"
+- `< >` - 尖括號中的為32位整形數字，整形數組<12 3 4>
+- `[ ]` - 方括號中的為32位十六進制數，十六機制數據[0x11 0x12 0x13] 其中0x可省略
 
-一個dts文件確定一個項目，多個項目可以包含同一個dtsi文件
+<h3 id="5.1.4">DTS中(地址, 中斷)屬性解釋</h3>
 
-找到該項目對應的dts文件即找到了該設備樹的根節點 `kernel\arch\arm\boot\dts\qcom\sdm630-mtp.dts`
+**地址**
+
+設備的地址特性根據以下幾個屬性來控制： `reg` `#address-cells` `#size-cells`
+
+- `reg = <address1length1 [address2 length2] [address3 length3]>;`
+- 父類的 `address-cells` 和 `size-cells` 決定了子類的相關屬性要包含多少個cell，如果子節點有特殊需求的話，可以自己再定義
+- address-cells決定了address1/2/3包含幾個cell，size-cells決定了length1/2/3包含了幾個cell
+
+SPI設備的地址範圍是0x10115000~0x10116000
+
+- 位於0x10115000的SPI設備申請地址空間，`起始地址為0x10115000，長度為0x1000`
+
+    ```dts
+    spi@10115000{
+        compatible = "arm,pl022";
+        reg = <0x10115000 0x1000 >;
+    };
+    ```
+
+實際應用中，有另外一種情況，就是通過外部芯片片選激活模塊。例如，掛載在外部總線上，需要通過片選線工作的一些模塊：
+
+- external-bus使用兩個cell來描述地址，一個是片選序號，另一個是片選序號上的偏移量
+- 子設備們都需要3個cell來描述地址空間屬性——`片選`、`偏移量`、`地址長度`
+- 在下方例子中，有一個例外，就是i2c控制器模塊下的rtc模塊。因為I2C設備只是被分配在一個地址上，不需要其他任何空間，所以只需要一個address的cell就可以描述完整，不需要size-cells
+
+    ```dts
+    external-bus{
+        #address-cells = <2>
+        #size-cells = <1>;
+    
+        ethernet@0,0 {
+            compatible = "smc,smc91c111";
+            reg = <0 0 0x1000>;
+        };
+    
+        i2c@1,0 {
+            compatible ="acme,a1234-i2c-bus";
+            #address-cells = <1>;
+            #size-cells = <0>;
+            reg = <1 0 0x1000>;
+            rtc@58 {
+                compatible ="maxim,ds1338";
+                reg = <58>;
+            };
+        };
+    
+        flash@2,0 {
+            compatible ="samsung,k8f1315ebm", "cfi-flash";
+            reg = <2 0 0x4000000>;
+        };
+    };
+    ```
+
+當需要描述的設備不是本地設備時，就需要描述一個從設備地址空間到CPU地址空間的映射關係，這裡就需要用到ranges屬性
+
+- ranges屬性為一個地址轉換錶。表中的每一行都包含了`子地址`、`父地址`、`在子地址空間內的區域大小`
+
+  - `0 0` 兩個cell(片選0，偏移0)，由子節點external-bus的address-cells=<2>決定；
+  - `0x10100000` 一個cell，由父節點的address-cells=<1>決定；
+  - `0x10000` 一個cell，由子節點external-bus的size-cells=<1>決定。
+
+    ```dts
+    #address-cells= <1>;
+    #size-cells= <1>;
+    ...
+    external-bus{
+        #address-cells = <2>
+        #size-cells = <1>;
+        ranges = <0 0  0x10100000  0x10000     // Chipselect 1,Ethernet
+                1 0  0x10160000  0x10000     // Chipselect 2, i2c controller
+                2 0  0x30000000  0x1000000>; // Chipselect 3, NOR Flash
+    };
+    ```
+
+**中斷**
+
+
+
+
+
 
 ---
 
