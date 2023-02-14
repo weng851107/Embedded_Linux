@@ -50,6 +50,7 @@ If there is related infringement or violation of related regulations, please con
       - [A-mic](#1.15.5.1)
       - [D-mic](#1.15.5.2)
     - [Noun Definition](#1.15.6)
+    - [A Tutorial on Using the ALSA Audio API](#1.15.7)
   - [H264與H265](#1.16)
   - [查詢RAM容量 & RAMDisk](#1.17)
   - [MTD、MMC、eMMC](#1.18)
@@ -131,6 +132,7 @@ If there is related infringement or violation of related regulations, please con
       - [2. drivers/of/platform.c](#5.1.6.2)
     - [查看掛載上的所有設備](#5.1.7)
     - [高通MSM8953實例分析](#5.1.8)
+  - [The Devicetree Specification](#5.2)
 - [快速入門](#6)
 - [驅動大全](#7)
 
@@ -1427,6 +1429,8 @@ Available commands:
   cget cID        get control contents for one control
 ```
 
+或者使用 UI介面，`alsamixer` 啟動，按H可顯示Help
+
 <h3 id="1.15.4">聲卡接口Line in、Line out、Mic in和Speak out</h3>
 
 ![Audio_img00](./image/Audio/Audio_img00.png)
@@ -1514,6 +1518,419 @@ Available commands:
 - 比例如果是指SNR的話，就是我們MIC本身在silence就會有一些雜訊，可能來自電路可能來自環境的底噪播MIC判斷為訊號而存成檔案，跟收到的訊號音量的一個比值
 
 ![Audio_img08](./image/Audio/Audio_img08.png)
+
+<h3 id="1.15.7">A Tutorial on Using the ALSA Audio API</h3>
+
+http://equalarea.com/paul/alsa-audio.html
+
+- [Understanding Audio Interfaces](#1.15.7.1)
+- [What a Typical Audio Application Does](#1.15.7.2)
+- [A Minimal Playback Program](#1.15.7.3)
+- [A Minimal Capture Program](#1.15.7.4)
+- [A Minimal Interrupt-Driven Program](#1.15.7.5)
+- [A Minimal Full-Duplex Program](#1.15.7.6)
+
+<h4 id="1.15.7.1">Understanding Audio Interfaces</h4>
+
+As an application developer, you don't need to worry about this level of operation - its all taken care of by `the device driver` (which is one of the components that ALSA
+
+An `audio interface` is a device that allows a computer to receive and to send audio data from/to the outside world.
+
+- Inside of the computer, audio data is represented a stream of bits, just like any other kind of data.
+- the audio interface may send and receive audio as either an `analog signal (a time-varying voltage)` or as a `digital signal (some stream of bits)`.
+- These two transformations are the reason for existence of the audio interface before receiving or sending audio data from/to the outside world.
+
+Within the audio interface is an area referred to as the `"hardware buffer"`, and it is a `"circular buffer"`.
+
+- When it has collected enough data in the hardware buffer, the interface interrupts the computer to tell it that it has data ready for it.
+- A similar process happens in reverse for data being sent from the computer to the outside world.
+
+There are a number of variables that need to be configured:
+
+- Governing the quality of the audio data
+  - `what format` should the interface use when converting between the bitstream used by the computer and the signal used in the outside world?
+  - `at what rate` should samples be moved between the interface and the computer?
+- Affecting the "latency" of the audio signal
+    > "input latency": data arriving at the audio interface from the outside world, and it being available to the computer
+    > "output latency": data being delivered by the computer, and it being delivered to the outside world
+  - `how much data (and/or space) should there be before the device interrupts` the computer?
+  - `how big should the hardware buffer` be?
+
+<h4 id="1.15.7.2">What a Typical Audio Application Does</h4>
+
+A typical audio application has this rough structure:
+
+```C
+open_the_device();
+set_the_parameters_of_the_device();
+while (!done) {
+    /* one or both of these */
+    receive_audio_data_from_the_device();
+deliver_audio_data_to_the_device();
+}
+close the device
+```
+
+<h4 id="1.15.7.3">A Minimal Playback Program</h4>
+
+This program opens an audio interface for playback, configures it for stereo, 16 bit, 44.1kHz, interleaved conventional read/write access.
+
+Then its delivers a chunk of random data to it, and exits. It represents about the simplest possible use of the ALSA Audio API, and isn't meant to be a real program.
+
+```C
+#include <stdio.h>
+#include <stdlib.h>
+#include <alsa/asoundlib.h>
+        
+main (int argc, char *argv[])
+{
+    int i;
+    int err;
+    short buf[128];
+    snd_pcm_t *playback_handle;
+    snd_pcm_hw_params_t *hw_params;
+
+    if ((err = snd_pcm_open (&playback_handle, argv[1], SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
+        fprintf (stderr, "cannot open audio device %s (%s)\n", 
+                argv[1],
+                snd_strerror (err));
+        exit (1);
+    }
+        
+    if ((err = snd_pcm_hw_params_malloc (&hw_params)) < 0) {
+        fprintf (stderr, "cannot allocate hardware parameter structure (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+                
+    if ((err = snd_pcm_hw_params_any (playback_handle, hw_params)) < 0) {
+        fprintf (stderr, "cannot initialize hardware parameter structure (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_set_access (playback_handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0) {
+        fprintf (stderr, "cannot set access type (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_set_format (playback_handle, hw_params, SND_PCM_FORMAT_S16_LE)) < 0) {
+        fprintf (stderr, "cannot set sample format (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_set_rate_near (playback_handle, hw_params, 44100, 0)) < 0) {
+        fprintf (stderr, "cannot set sample rate (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_set_channels (playback_handle, hw_params, 2)) < 0) {
+        fprintf (stderr, "cannot set channel count (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params (playback_handle, hw_params)) < 0) {
+        fprintf (stderr, "cannot set parameters (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    snd_pcm_hw_params_free (hw_params);
+
+    if ((err = snd_pcm_prepare (playback_handle)) < 0) {
+        fprintf (stderr, "cannot prepare audio interface for use (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    for (i = 0; i < 10; ++i) {
+        if ((err = snd_pcm_writei (playback_handle, buf, 128)) != 128) {
+            fprintf (stderr, "write to audio interface failed (%s)\n",
+                    snd_strerror (err));
+            exit (1);
+        }
+    }
+
+    snd_pcm_close (playback_handle);
+    exit (0);
+}
+```
+
+<h4 id="1.15.7.4">A Minimal Capture Program</h4>
+
+This program opens an audio interface for capture, configures it for stereo, 16 bit, 44.1kHz, interleaved conventional read/write access.
+
+Then its reads a chunk of random data from it, and exits. It isn't meant to be a real program.
+
+```C
+#include <stdio.h>
+#include <stdlib.h>
+#include <alsa/asoundlib.h>
+        
+main (int argc, char *argv[])
+{
+    int i;
+    int err;
+    short buf[128];
+    snd_pcm_t *capture_handle;
+    snd_pcm_hw_params_t *hw_params;
+
+    if ((err = snd_pcm_open (&capture_handle, argv[1], SND_PCM_STREAM_CAPTURE, 0)) < 0) {
+        fprintf (stderr, "cannot open audio device %s (%s)\n", 
+                argv[1],
+                snd_strerror (err));
+        exit (1);
+    }
+        
+    if ((err = snd_pcm_hw_params_malloc (&hw_params)) < 0) {
+        fprintf (stderr, "cannot allocate hardware parameter structure (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+                
+    if ((err = snd_pcm_hw_params_any (capture_handle, hw_params)) < 0) {
+        fprintf (stderr, "cannot initialize hardware parameter structure (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_set_access (capture_handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0) {
+        fprintf (stderr, "cannot set access type (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_set_format (capture_handle, hw_params, SND_PCM_FORMAT_S16_LE)) < 0) {
+        fprintf (stderr, "cannot set sample format (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_set_rate_near (capture_handle, hw_params, 44100, 0)) < 0) {
+        fprintf (stderr, "cannot set sample rate (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_set_channels (capture_handle, hw_params, 2)) < 0) {
+        fprintf (stderr, "cannot set channel count (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params (capture_handle, hw_params)) < 0) {
+        fprintf (stderr, "cannot set parameters (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    snd_pcm_hw_params_free (hw_params);
+
+    if ((err = snd_pcm_prepare (capture_handle)) < 0) {
+        fprintf (stderr, "cannot prepare audio interface for use (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    for (i = 0; i < 10; ++i) {
+        if ((err = snd_pcm_readi (capture_handle, buf, 128)) != 128) {
+            fprintf (stderr, "read from audio interface failed (%s)\n",
+                    snd_strerror (err));
+            exit (1);
+        }
+    }
+
+    snd_pcm_close (capture_handle);
+    exit (0);
+}
+```
+
+<h4 id="1.15.7.5">A Minimal Interrupt-Driven Program</h4>
+
+This program opens an audio interface for playback, configures it for stereo, 16 bit, 44.1kHz, interleaved conventional read/write access.
+
+This design allows your program to be easily ported to systems that rely on a callback-driven mechanism, such as [JACK](https://sourceforge.net/projects/jackit/), [LADSPA](http://www.ladspa.org/), `CoreAudio`, `VST` and many others.
+
+```C
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <poll.h>
+#include <alsa/asoundlib.h>
+        
+snd_pcm_t *playback_handle;
+short buf[4096];
+
+int
+playback_callback (snd_pcm_sframes_t nframes)
+{
+    int err;
+
+    printf ("playback callback called with %u frames\n", nframes);
+
+    /* ... fill buf with data ... */
+
+    if ((err = snd_pcm_writei (playback_handle, buf, nframes)) < 0) {
+        fprintf (stderr, "write failed (%s)\n", snd_strerror (err));
+    }
+
+    return err;
+}
+        
+main (int argc, char *argv[])
+{
+
+    snd_pcm_hw_params_t *hw_params;
+    snd_pcm_sw_params_t *sw_params;
+    snd_pcm_sframes_t frames_to_deliver;
+    int nfds;
+    int err;
+    struct pollfd *pfds;
+
+    if ((err = snd_pcm_open (&playback_handle, argv[1], SND_PCM_STREAM_PLAYBACK, 0)) < 0) {
+        fprintf (stderr, "cannot open audio device %s (%s)\n", 
+                argv[1],
+                snd_strerror (err));
+        exit (1);
+    }
+        
+    if ((err = snd_pcm_hw_params_malloc (&hw_params)) < 0) {
+        fprintf (stderr, "cannot allocate hardware parameter structure (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+                
+    if ((err = snd_pcm_hw_params_any (playback_handle, hw_params)) < 0) {
+        fprintf (stderr, "cannot initialize hardware parameter structure (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_set_access (playback_handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED)) < 0) {
+        fprintf (stderr, "cannot set access type (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_set_format (playback_handle, hw_params, SND_PCM_FORMAT_S16_LE)) < 0) {
+        fprintf (stderr, "cannot set sample format (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_set_rate_near (playback_handle, hw_params, 44100, 0)) < 0) {
+        fprintf (stderr, "cannot set sample rate (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params_set_channels (playback_handle, hw_params, 2)) < 0) {
+        fprintf (stderr, "cannot set channel count (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    if ((err = snd_pcm_hw_params (playback_handle, hw_params)) < 0) {
+        fprintf (stderr, "cannot set parameters (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    snd_pcm_hw_params_free (hw_params);
+
+    /* tell ALSA to wake us up whenever 4096 or more frames
+        of playback data can be delivered. Also, tell
+        ALSA that we'll start the device ourselves.
+    */
+
+    if ((err = snd_pcm_sw_params_malloc (&sw_params)) < 0) {
+        fprintf (stderr, "cannot allocate software parameters structure (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+    if ((err = snd_pcm_sw_params_current (playback_handle, sw_params)) < 0) {
+        fprintf (stderr, "cannot initialize software parameters structure (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+    if ((err = snd_pcm_sw_params_set_avail_min (playback_handle, sw_params, 4096)) < 0) {
+        fprintf (stderr, "cannot set minimum available count (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+    if ((err = snd_pcm_sw_params_set_start_threshold (playback_handle, sw_params, 0U)) < 0) {
+        fprintf (stderr, "cannot set start mode (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+    if ((err = snd_pcm_sw_params (playback_handle, sw_params)) < 0) {
+        fprintf (stderr, "cannot set software parameters (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    /* the interface will interrupt the kernel every 4096 frames, and ALSA
+        will wake up this program very soon after that.
+    */
+
+    if ((err = snd_pcm_prepare (playback_handle)) < 0) {
+        fprintf (stderr, "cannot prepare audio interface for use (%s)\n",
+                snd_strerror (err));
+        exit (1);
+    }
+
+    while (1) {
+
+        /* wait till the interface is ready for data, or 1 second
+            has elapsed.
+        */
+
+        if ((err = snd_pcm_wait (playback_handle, 1000)) < 0) {
+                fprintf (stderr, "poll failed (%s)\n", strerror (errno));
+                break;
+        }	           
+
+        /* find out how much space is available for playback data */
+
+        if ((frames_to_deliver = snd_pcm_avail_update (playback_handle)) < 0) {
+            if (frames_to_deliver == -EPIPE) {
+                fprintf (stderr, "an xrun occured\n");
+                break;
+            } else {
+                fprintf (stderr, "unknown ALSA avail update return value (%d)\n", 
+                        frames_to_deliver);
+                break;
+            }
+        }
+
+        frames_to_deliver = frames_to_deliver > 4096 ? 4096 : frames_to_deliver;
+
+        /* deliver the data */
+
+        if (playback_callback (frames_to_deliver) != frames_to_deliver) {
+                fprintf (stderr, "playback callback failed\n");
+            break;
+        }
+    }
+
+    snd_pcm_close (playback_handle);
+    exit (0);
+}
+```
+
+<h4 id="1.15.7.6">A Minimal Full-Duplex Program</h4>
+
+Full duplex can be implemented by combining the playback and capture designs show above.
+
+Although many existing Linux audio applications use this kind of design, in this author's opinion, it is deeply flawed. 
+
+The the interrupt-driven example represents a fundamentally better design for many situations. It is, however, rather complex to extend to full duplex. This is why I suggest you forget about all of this.
+
+- In a word: [JACK (JACK Audio Connection Kit)](https://sourceforge.net/projects/jackit/).
 
 <h2 id="1.16">H264與H265</h2>
 
@@ -4067,13 +4484,404 @@ static const struct of_device_id iqs263_of_match[] = {
 }
 ```
 
+由於此compatible可以找到dts中對應的設備
+`內核\arch\arm64\boot\dts\qcom\msm8953-mtp.dts`
 
+```dts
+&i2c_8 { /* BLSP2 QUP4 */
+    iqs263@44 { //Capacitive Touch Controller Driver
+        compatible = "azopteq,iqs263";
+        reg = <0x44>;
+        
+        pinctrl-names = "default";
+        pinctrl-0 = <&iqs263_irq_config>;
+        
+        vdd-supply = <&pm8953_l5>;
+        vio-supply = <&pm8953_l5>;
+        interrupt-parent = <&tlmm>;
+        interrupts = <48 0x2>;
+        azopteq,irq-gpio =<&tlmm 48 0x2>;
+    };
+};
+```
 
----
+- `compatible` 屬性標準的名稱是與驅動程序中名稱相配的
+- `reg屬性` 及 `@符號後的十六進制數字` 標識了該設備iqs263的i2c地址為0x44
+
+`&i2c_8前的&` 說明這裡只是對i2c_8節點的補充，我們可以找到該節點確定的地方
+`內核\arch\arm64\boot\dts\qcom\msm8953.dtsi`
+
+```dtsi
+&soc {
+    i2c_8: i2c@7af8000 { /* BLSP2 QUP4 */
+        compatible = "qcom,i2c-msm-v2";
+        #address-cells = <1>;
+        #size-cells = <0>;
+        reg-names = "qup_phys_addr";
+        reg = <0x7af8000 0x600>;
+        interrupt-names = "qup_irq";
+        interrupts = <0 302 0>;
+        qcom,clk-freq-out = <400000>;
+        qcom,clk-freq-in  = <19200000>;
+        clock-names = "iface_clk", "core_clk";
+        clocks = <&clock_gcc clk_gcc_blsp2_ahb_clk>,
+            <&clock_gcc clk_gcc_blsp2_qup4_i2c_apps_clk>;
+ 
+        pinctrl-names = "i2c_active", "i2c_sleep";
+        pinctrl-0 = <&i2c_8_active>;
+        pinctrl-1 = <&i2c_8_sleep>;
+        qcom,noise-rjct-scl = <0>;
+        qcom,noise-rjct-sda = <0>;
+        qcom,master-id = <84>;
+        dmas = <&dma_blsp2 10 64 0x20000020 0x20>,
+            <&dma_blsp2 11 32 0x20000020 0x20>;
+        dma-names = "tx", "rx";
+    };
+    rpm_bus: qcom,rpm-smd {
+        compatible = "qcom,rpm-smd";
+        rpm-channel-name = "rpm_requests";
+        rpm-channel-type = <15>; /* SMD_APPS_RPM */
+    };
+```
+
+- 大部分屬性都與平台相關了，可以看到確定了該i2c接口的時鐘源、中間格式等。這部分一般由平台提供，作用為驅動
+
+i2c_8節點中的pinctrl-0指向了確定其io口的節點i2c_8_active和i2c_8_sleep，代碼如下可見該i2c的IO口為Gpio98和Gpio99
+`內核\arch\arm64\boot\dts\qcom\msm8953-pinctrl.dtsi`
+
+定義了iqs263的中斷IO腳為Gpio48
+
+```dts
+&soc {
+    tlmm: pinctrl@1000000 {
+        i2c_8 {
+            i2c_8_active: i2c_8_active {
+                /* active state */
+                mux {
+                    pins = "gpio98", "gpio99";
+                    function = "blsp_i2c8";
+                };
+ 
+                config {
+                    pins = "gpio98", "gpio99";
+                    drive-strength = <2>;
+                    bias-disable;
+                };
+            };
+ 
+            i2c_8_sleep: i2c_8_sleep {
+                /* suspended state */
+                mux {
+                    pins = "gpio98", "gpio99";
+                    function = "gpio";
+                };
+ 
+                config {
+                    pins = "gpio98", "gpio99";
+                    drive-strength = <2>;
+                    bias-disable;
+                };
+            };
+        };
+        
+        iqs263_irq_config: iqs263_irq_config {
+            mux {
+                pins = "gpio48";
+                function = "gpio";
+            };
+ 
+            config {
+                pins = "gpio48";
+                drive-strength = <2>;
+                bias-pull-up;
+            };
+        };
+```
+
+iqs263節點中的vdd-supply，vio-supply屬性指示了表示iqs263芯片提供電的引腳的節點pm8953_l5
+
+```dts
+&rpm_bus {
+    rpm-regulator-ldoa5 {
+        status = "okay";
+        pm8953_l5: regulator-l5 {
+            regulator-min-microvolt = <1800000>;
+            regulator-max-microvolt = <1800000>;
+            qcom,init-voltage = <1800000>;
+            status = "okay";
+        };
+    };
+```
+
+<h2 id="5.2">The Devicetree Specification</h2>
 
 https://www.devicetree.org/specifications/
 
+[devicetree-specification-v0.4-rc1.pdf](./doc/devicetree-specification-v0.4-rc1.pdf)
 
+- [The Devicetree](#5.2.1)
+  - [Overview](#5.2.1.1)
+  - [Devicetree Structure and Conventions](#5.2.1.2)
+  - [Standard Properties](#5.2.1.3)
+  - [Interrupts and Interrupt Mapping](#5.2.1.4)
+
+<h3 id="5.2.1">The Devicetree</h3>
+
+<h4 id="5.2.1.1">Overview</h4>
+
+The DTSpec supports CPUs with both 32-bit and 64-bit addressing capabilities.
+
+A devicetree to describe system hardware.
+A boot program loads a devicetree into a client program’s memory and passes a pointer to the devicetree to the client.
+
+Example:
+
+- a simple devicetree that is nearly complete enough to boot a simple operating
+system, with the platform type, CPU, memory and a single UART described.
+
+    ![dt_img04](./image/DT/dt_img04.PNG)
+
+<h4 id="5.2.1.2">Devicetree Structure and Conventions</h4>
+
+**Node Names** - `node-name@unit-address`
+
+The node-name component specifies the name of the node. It shall be 1 to 31 characters in length and consist solely of characters from the set of characters in Table 2.1.
+
+![dt_img05](./image/DT/dt_img05.PNG)
+
+- The `node-name` shall start with a lower or uppercase character and should describe the general class of device.
+- The `unit-address` component of the name is specific to the bus type on which the node sits.
+- The unit-address must match the first address specified in the `reg` property
+of the node. If the node has no reg property, the @unit-address must be omitted
+
+Examples of Node Names
+
+![dt_img06](./image/DT/dt_img06.PNG)
+
+- The `root node` does not have a node-name or unit-address. It is identified by a forward slash (`/`).
+- The nodes with the name `cpu` are distinguished by their unit-address values of `0` and `1`.
+- The nodes with the name `ethernet` are distinguished by their unit-address values of `fe002000` and `fe003000`.
+
+Generic Names Recommendation
+
+![dt_img07](./image/DT/dt_img07.PNG)
+
+![dt_img08](./image/DT/dt_img08.PNG)
+
+**Path**
+
+A node in the devicetree can be uniquely identified by specifying the full path from the root node, through all descendant
+nodes, to the desired node.
+
+- The path to the root node is `/`.
+- `/node-name-1/node-name-2/node-name-N`
+- `/cpus/cpu@1`
+
+**Properties**
+
+Each node in the devicetree has properties that describe the characteristics of the node. Properties consist of a name and a value.
+
+![dt_img09](./image/DT/dt_img09.PNG)
+
+*Nonstandard property names* should specify a unique string prefix, such as a stock ticker symbol, identifying the name of the company or organization that defined the property. Examples:
+
+- `fsl,channel-fifo-len`
+- `ibm,ppc-interrupt-server#s`
+- `linux,network-index`
+
+*Property Values*
+
+![dt_img10](./image/DT/dt_img10.PNG)
+
+![dt_img11](./image/DT/dt_img11.PNG)
+
+<h4 id="5.2.1.3">Standard Properties</h4>
+
+DTSpec specifies a set of standard properties for device nodes.
+
+**compatible**
+
+- Value type: `<stringlist>`
+- Description:
+  - This list of strings should be used by a client program for device driver selection.
+  - The recommended format is `"manufacturer,model"`, where `manufacturer` is a string describing the name of the manufacturer (such as a stock ticker symbol), and `model` specifies the model number.
+- Example: `compatible = "fsl,mpc8641", "ns16550";`
+
+**model**
+
+- Value type: `<string>`
+- Description:
+  - The model property value is a `<string>` that specifies the manufacturer’s model number of the device.
+  - The recommended format is: `"manufacturer,model"`, where `manufacturer` is a string describing the name of the manufacturer, and `model` specifies the model number.
+- Example: `model = "fsl,MPC8349EMITX";`
+
+**phandle**
+
+- Value type: `<u32>`
+- Description:
+  - The *phandle* property specifies a numerical identifier for a node that is unique within the devicetree.
+  - The phandle property value is used by other nodes that need to refer to the node associated with the property.
+- Example:
+
+    ```dts
+    pic@10000000 {
+        phandle = <1>;
+        interrupt-controller;
+        reg = <0x10000000 0x100>;
+    };
+
+    another-device-node {
+        interrupt-parent = <1>;
+    };
+    ```
+
+**status**
+
+- Value type: `<string>`
+- Description:
+  - The *status* property indicates the operational status of a device.
+  - The lack of a status property should be treated as if the property existed with the value of `"okay"`.
+
+    ![dt_img12](./image/DT/dt_img12.PNG)
+
+**#address-cells 和 #size-cells**
+
+- Value type: `<u32>`
+- Description:
+  - The `#address-cells` and `#size-cells` properties may be used in any device node that has children in the devicetreehierarchy and describes how child device nodes should be addressed.
+  - The `#address-cells` property defines the number of `<u32>` cells used to encode the address field in a child node’s `reg` property
+  - The `#size-cells` property defines the number of `<u32>` cells used to encode the size field in a child node’s `reg` property.
+- Example:
+  - The *address* is represented by a single cell (`0x4600`), and the *size* is represented by a single cell (`0x100`).
+
+    ```dts
+    soc {
+        #address-cells = <1>;
+        #size-cells = <1>;
+
+        serial@4600 {
+            compatible = "ns16550";
+            reg = <0x4600 0x100>;
+            clock-frequency = <0>;
+            interrupts = <0xA 0x8>;
+            interrupt-parent = <&ipic>;
+        };
+    };
+    ```
+
+**reg**
+
+- Property value: `<prop-encoded-array>` encoded as an arbitrary number of `(address, length)` pairs.
+- Description:
+  - The `reg` property describes the address of the device’s resources within the address space defined by its parent bus.
+  - Most commonly this means the *offsets* and *lengths* of memory-mapped IO register blocks, but may have a different meaning on some bus types.
+  - If the parent node specifies a value of *0* for #size-cells, the length field in the value of reg shall be omitted.
+- Example: Suppose a device within a system-on-a-chip had two blocks of registers, *a 32-byte block at offset 0x3000* in the SOC and *a 256-byte block at offset 0xFE00*.
+
+    ```dts
+    reg = <0x3000 0x20 0xFE00 0x100>;
+    ```
+
+**virtual-reg**
+
+- Value type: `<u32>`
+- Description:
+  - The `virtual-reg` property specifies an effective address that maps to the first physical address specified in the reg property of the device node.
+  - This property enables boot programs to provide client programs with virtual-to- physical mappings that have been set up.
+
+**ranges**
+
+- Value type: `<empty>` or `<prop-encoded-array>` encoded as an arbitrary number of (`child-bus-address, parent-bus-address, length`) triplets
+- Description:
+  - The ranges property provides a means of defining a *mapping* or *translation* between the address space of the bus (the child address space) and the address space of the bus node’s parent (the parent address space).
+  - `child-bus-address, parent-bus-address, length`
+    - The `child-bus-address` is a physical address within the child bus’ address space.
+    - The `parent-bus-address` is a physical address within the parent bus’ address space.
+    - The `length` specifies the size of the range in the child’s address space.
+  - If the property is defined with an `<empty>` value, it specifies that the parent and child address space is identical, and no address translation is required.
+  - If the property is *not present* in a bus node, it is assumed that no mapping exists between children of the node and the parent address space.
+- Address Translation Example: `<0x0 0xe0000000 0x00100000>;`
+  - This property value specifies that for a *1024 KB* range of address space
+  - a child node addressed at physical *0x0* maps to a parent address of physical *0xe0000000*.
+  - With this mapping, the `serial` device node can beaddressed by a load or store at address 0xe0004600, an offset of 0x4600 (specified in reg) plus the 0xe0000000 mapping specified in ranges.
+
+    ```dts
+    soc {
+        compatible = "simple-bus";
+        #address-cells = <1>;
+        #size-cells = <1>;
+        ranges = <0x0 0xe0000000 0x00100000>;
+        
+        serial@4600 {
+            device_type = "serial";
+            compatible = "ns16550";
+            reg = <0x4600 0x100>;
+            clock-frequency = <0>;
+            interrupts = <0xA 0x8>;
+            interrupt-parent = <&ipic>;
+        };
+    };
+    ```
+
+**dma-ranges**
+
+- Value type: `<empty>` or `<prop-encoded-array>` encoded as an arbitrary number of (`child-bus-address, parent-busaddress, length`) triplets.
+- Description:
+  - The dma-ranges property is used to describe the direct memory access (DMA) structure of a memory-mapped bus whose devicetree parent can be accessed from DMA operations originating from the bus.
+  - It provides a means of defining a mapping or translation between the physical address space of the bus and the physical address space of the parent of the bus.
+  - `child-bus-address, parent-bus-address, length`
+    - `child-bus-address` is a physical address within the child bus’ address space.
+    - `parent-bus-address` is a physical address within the parent bus’ address space.
+    - `length` specifies the size of the range in the child’s address space.
+
+**dma-coherent**
+
+- Value type: `<empty>`
+- Description: 
+  - For architectures which are by default non-coherent for I/O, the dma-coherent property is used to indicate a device is capable of coherent DMA operations.
+
+**name (deprecated)**
+
+- Value type: `<string>`
+- Description: 
+  - The `name` property is a string specifying the name of the node.
+  - property is deprecated, and its use is not recommended.
+
+<h4 id="5.2.1.4">Interrupts and Interrupt Mapping</h4>
+
+The physical wiring of an interrupt source to an interrupt controller is represented in the devicetree with the `interrupt-parent` property.
+
+Nodes that represent interrupt-generating devices contain an interrupt-parent property which has a *phandle* value that points to the device to which the device’s interrupts are routed, typically an `interrupt controller`.
+
+Each interrupt generating device contains an `interrupts` property with a value describing one or more interrupt sources for that device.
+
+Each source is represented with information called an `interrupt specifier`, and it is dependent on properties on the node at the root of its interrupt domain.
+
+The `#interrupt-cells` property is used by the root of an interrupt domain to define the number of `<u32>` values needed to encode an interrupt specifier.
+
+The root of the domain is either (1) `an interrupt controller` or (2) `an interrupt nexus`.
+
+- An `interrupt controller` is a physical device and will need a driver to handle interrupts routed through it.
+- An `interrupt nexus` defines a translation between one interrupt domain and another. This translation between domains is performed with the interruptmap property.
+
+##### Properties for Interrupt Generating Devices
+
+**interrupts**
+
+- Value type: `<prop-encoded-array>` encoded as arbitrary number of interrupt specifiers
+- Description:
+  - The interrupts property of a device node defines the interrupt or interrupts that are generated by the device.
+  - interrupt domain consists of two cells; an interrupt number and level/sense information.
+  - interrupts is overridden by the interrupts-extended property and normally only one or the other should be used.
+- Example: a single interrupt specifier, with an interrupt number of 0xA and level/sense encoding of 8.
+
+    ```dts
+    interrupts = <0xA 8>;
+    ```
+
+**interrupt-parent**
+
+- Value type: `<phandle>`
 
 
 

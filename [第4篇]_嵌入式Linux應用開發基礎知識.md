@@ -255,6 +255,26 @@ gcc -o test main.c sub.c
 
     顯示製作GCC工具自身時的配置命令；同時顯示編譯器驅動程式、前置處理器、編譯器的版本號。
 
+**指定 C標準(C Standard) 的版本：**
+
+```bash
+$ gcc -Wall -g -std=c11 -o program source.c
+```
+
+GCC 中常見的C 語言標準：
+
+- c89 或c90 或-ansi
+- c99
+- c11
+- c17 或c18
+
+除此之外，還可以加上GNU 特有的extension：
+
+- gnu89 或gnu90：c89 加上GNU C extension
+- gnu99：c99 加上GNU C extension
+- gnu11：c11 加上GNU C extension
+- gnu17：c17 加上GNU C extension
+
 **警告選項(Warning Option)：**
 
 [Options to Request or Suppress Warnings](https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wunused-variable-Werror=unused-variable%1B]8)
@@ -382,6 +402,20 @@ gcc -Wall -c main.c
     gcc -shared  -o libsub.so  sub.o  sub2.o  sub3.o
     ```
 
+**加入額外的函式庫：**
+
+除了少數內建的函式庫以外，編譯時要加入相關的參數
+
+- -lm：連結math.h
+- -lstdc++：混合編譯C 和C++ 程式碼時需連結的函式庫
+- -lpthread：連結GNU/Linux 的多執行緒函式庫
+- -lrt：連結POSIX 運行期函式庫
+- -ldl：連結動態函式函式庫
+
+```bash
+$ gcc -Wall -g -o program source.c -lm
+```
+
 **目錄選項(Directory Option)：**
 
 下列選項指定搜索路徑，用於查找標頭檔，庫檔，或編譯器的某些成員。
@@ -431,9 +465,13 @@ gcc -Wall -c main.c
 
 **靜態庫：**
 
+![img128](./[第4篇]_嵌入式Linux應用開發基礎知識/img128.PNG)
+
 ![img07](./[第4篇]_嵌入式Linux應用開發基礎知識/img07.PNG)
 
 **動態庫：**
+
+![img129](./[第4篇]_嵌入式Linux應用開發基礎知識/img129.PNG)
 
 ![img08](./[第4篇]_嵌入式Linux應用開發基礎知識/img08.PNG)
 
