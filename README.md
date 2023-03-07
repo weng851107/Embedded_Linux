@@ -68,6 +68,7 @@ If there is related infringement or violation of related regulations, please con
     - [圖像與濾波](#1.23.5)
     - [傅里葉變換](#1.23.6)
   - [FFMPEG](#1.24)
+  - [Hex/Bin in MCU](#1.25)
 - [Linux Kernel相關知識](#2)
   - [基本系統數據類型](#2.1)
   - [取得kernel log的方式](#2.2)
@@ -2509,6 +2510,19 @@ $$
 
 [ffmpeg基礎使用](https://www.jianshu.com/p/ddafe46827b7)
 
+<h2 id="1.25">Hex/Bin in MCU</h2>
+
+BIN
+
+- BIN文件是最純粹的二進制機器代碼，沒有格式，或者說是"順序格式"。按assembly code順序翻譯成binary machine code，其內部沒有地址標記，通常是計算機的指令合集。一般用編程器燒寫時從00開始，而如果下載運行，則下載到編譯時的地址即可。
+
+HEX
+
+- HEX文件常用來保存單片機或其他處理器的目標程序代碼。它保存物理程序存儲區中的目標代碼映像。一般的編程器都支持這種格式。就是機器代碼的十六進制形式，並且是用一定文件格式的ASCII碼來表示。
+- 一般MCU編譯出來的FW都是這種副檔名，一般都採用intel compiler編譯出來的intel hex格式
+- MCU FW .hex檔，若要自行轉成bin檔給機台燒錄時，不能使用`xxd`來轉換(xxd是將16進位轉為2進位...等等)，要用Hex2Bin.exe來轉換，才能正確把MCU的hex轉換成bin
+
+    [Hex2bin-2.5.7z](./tool/Hex2bin-2.5.7z)
 
 <h1 id="2">Linux Kernel相關知識</h1>
 
