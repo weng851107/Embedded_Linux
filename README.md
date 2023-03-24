@@ -142,7 +142,7 @@ If there is related infringement or violation of related regulations, please con
   - [ARM架構](#8.3)
   - [數據長度, 地址長度, 與 暫存器](#8.4)
   - [CMSIS 與 HAL 開發庫](#8.5)
-    - [GPIO 控制 LED 不停地閃爍](#8.5.1)
+    - [STM32 低功號模式](#8.5.1)
   - [中斷（Interrupt）](#8.6)
 
 
@@ -4815,66 +4815,130 @@ CMSIS（Cortex Microcontroller Software Interface Standard）和 HAL（硬件抽
 
 - 結合上述因素，你可以根據你的應用程序需求、開發經驗和其他限制來選擇使用 CMSIS、HAL 或兩者的組合。例如，對於一個需要高性能和低資源使用的應用程序，可以選擇使用 CMSIS；而對於一個快速開發和簡化硬件操作的應用程序，可以選擇使用 HAL。在某些情況下，你可能需要在同一個專案中使用 CMSIS 和 HAL 的組合，以實現特定功能的最佳性能和易用性。
 
-<h3 id="8.5.1">GPIO 控制 LED 不停地閃爍</h2>
+<h3 id="8.5.1">STM32 低功號模式</h2>
 
-使用 Keil MDK 和 CMSIS 來開發一個基本的微控制器應用程式，在這個案例中，我們將使用一個 STM32F4 系列的微控制器
+引數介紹
 
-1. 首先，下載並安裝 Keil MDK (Microcontroller Development Kit)。你可以在以下網址找到它：
-https://www.keil.com/download/product/
-2. 打開 Keil uVision 並創建一個新專案。選擇 File -> New -> Project。在彈出的對話框中，瀏覽到你想要保存專案的位置，然後給專案一個名字。
-3. 選擇你的微控制器。在 "Select Device for Target" 對話框中，選擇你的微控制器型號。例如，對於 STM32F4，請選擇 STM32F407VG。點擊 "OK"。
-4. 將 CMSIS 啟用。在專案視窗中，右鍵單擊 "Target 1"，然後選擇 "Manage Run-Time Environment"。在 CMSIS 核心的部分，標記 "CORE"。點擊 "OK"。
-5. 創建一個名為 "main.c" 的新文件，並添加以下程式碼：
+1. `uint32_t Regulator`：此引數用於選擇在Sleep模式下使用的電壓穩壓器。可以是以下兩個選項之一：
+
+   - `PWR_MAINREGULATOR_ON`：在Sleep模式下使用主電壓穩壓器。這將在Sleep模式下為外設提供較高的運行電壓，但功耗相對較高。
+   - `PWR_LOWPOWERREGULATOR_ON`：在Sleep模式下使用低功耗電壓穩壓器。這將在Sleep模式下為外設提供較低的運行電壓，降低功耗，但性能可能受到影響。
+
+2. `uint8_t SLEEPEntry`：此引數用於選擇微控制器如何進入Sleep模式。可以是以下兩個選項之一：
+
+   - `PWR_SLEEPENTRY_WFI`：使用Wait For Interrupt（WFI）指令進入Sleep模式。微控制器將等待中斷事件，然後進入Sleep模式。當中斷事件到達時，微控制器將自動喚醒並返回正常模式。
+   - `PWR_SLEEPENTRY_WFE`：使用Wait For Event（WFE）指令進入Sleep模式。微控制器將等待特定的事件（例如，外部中斷或其他同步事件），然後進入Sleep模式。當事件到達時，微控制器將自動喚醒並返回正常模式。
+
+在STM32微控制器中，使用HAL庫可以很容易地實現低功耗模式。以下是一些常見的低功耗模式和相應的HAL函數：
+
+1. Sleep模式：
 
     ```C
-    #include "stm32f4xx.h"
-    #include "stm32f4xx_conf.h"
-    #include "core_cm4.h"
-
-    void delay(uint32_t time);
-
-    int main() {
-    // Enable GPIOA clock
-    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
-
-    // Configure PA5 (built-in LED) as output
-    GPIO_InitTypeDef GPIO_InitStructure;
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
-    GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
-    GPIO_Init(GPIOA, &GPIO_InitStructure);
-
-    while (1) {
-        // Toggle LED
-        GPIO_ToggleBits(GPIOA, GPIO_Pin_5);
-
-        // Delay
-        delay(1000000);
-    }
-
-    return 0;
-    }
-
-    void delay(uint32_t time) {
-    for (uint32_t i = 0; i < time; i++) {
-        __NOP();
-    }
-    }
+    HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
     ```
 
-    這個程式碼會讓內置在 PA5 上的 LED 不停地閃爍。
+    在這個例子中，我們使用了HAL_PWR_EnterSLEEPMode函數，並指定了主電壓穩壓器（PWR_MAINREGULATOR_ON）和Wait For Interrupt（PWR_SLEEPENTRY_WFI）作為參數。這將使STM32進入Sleep模式，並等待中斷來喚醒。
 
-6. 編譯並下載程式到微控制器。點擊工具欄上的編譯按鈕，然後點擊下載按鈕。確保你的微控制器已通過 JTAG 或 SWD 介面連接到電腦。
-7. 運行程式。點擊 "Start" 按鈕，你應該會看到 LED 開始閃爍。
+    - 在Sleep模式下，CPU停止運行，但外設和時鐘仍然處於活動狀態。
+    - 這意味著在Sleep模式下，外設（如UART、I2C、SPI等）仍然可以運行。
+    - 由於外設仍然運行，Sleep模式的功耗相對較高。
+    - 從Sleep模式喚醒的速度相對較快，因為只需恢復CPU運行即可。
 
-使用了 CMSIS 函式庫提供的 STM32F4xx 標準外設庫函數，以便更簡單地設置 GPIO 和時鐘。以下是使用到的 CMSIS 相關函式和結構：
+2. Stop模式：
 
-- `RCC_AHB1PeriphClockCmd()`：使用 CMSIS 函式庫來啟用 GPIOA 的時鐘。
-- `GPIO_InitTypeDef`：使用 CMSIS 提供的結構來定義 GPIO 初始化參數。
-- `GPIO_Init()`：使用 CMSIS 函式庫函數來初始化 GPIOA。
-- `GPIO_ToggleBits()`：使用 CMSIS 函式庫函數來切換 GPIOA 上的特定位。
+    ```C
+    HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+    ```
+
+    在這個例子中，我們使用了HAL_PWR_EnterSTOPMode函數，並指定了低功耗電壓穩壓器（PWR_LOWPOWERREGULATOR_ON）和Wait For Interrupt（PWR_STOPENTRY_WFI）作為參數。這將使STM32進入Stop模式，並等待中斷來喚醒。
+
+    - 在Stop模式下，CPU和大部分外設和時鐘都將被關閉，僅保留某些特定外設的功能（例如RTC和唤醒引脚）。
+    - 這意味著在Stop模式下，大多數外設（如UART、I2C、SPI等）都無法運行。
+    - 由於大多數外設和時鐘都被關閉，Stop模式的功耗相對較低。
+    - 從Stop模式喚醒的速度相對較慢，因為需要重新啟動時鐘並恢復CPU運行。
+
+3. Standby模式：
+
+    ```C
+    HAL_PWR_EnterSTANDBYMode();
+    ```
+
+    在Standby模式下，微控制器的所有外設和時鐘都會被關閉，僅保留某些特定外設的功能，如RTC和唤醒引脚。因此，相對於Sleep模式，Standby模式具有更低的功耗。然而，從Standby模式喚醒後，微控制器將從系統重置開始執行，因此需要重新初始化所有外設和設置。
+
+    - 在Standby模式下，微控制器的所有外設和時鐘都會被關閉，僅保留某些特定外設的功能，如RTC和唤醒引脚。
+    - 這意味著在Standby模式下，所有外設（如UART、I2C、SPI等）都無法運行。
+    - 由於所有外設和時鐘都被關閉，Standby模式具有最低的功耗。
+    - 從Standby模式喚醒後，微控制器將從系統重置開始執行，因此需要重新初始化所有外設和設置。
+    - 喚醒後，微控制器將執行從重置向量開始的程式碼，即從頭開始運行 -> 將從重置向量開始執行程式碼，就像重新啟動（重開機）一樣。換句話說，它會重新運行整個程式，從主函數（通常是main()）的開始處執行。應該確保您的應用程序可以在每次喚醒後正確地從頭開始運行，並且所有需要保留的數據和狀態在進入Standby模式之前已經保存。
+
+- 請注意，在使用這些函數之前，您需要確保已經對相應的外設和中斷進行了配置。另外，喚醒後，您可能需要重新配置系統時鐘和其他設置，以恢復正常操作。根據您的具體需求和硬件設計，選擇合適的低功耗模式並進行相應的配置。
+
+在STM32微控制器中，通常使用中斷或事件來從低功耗模式喚醒並返回正常模式。喚醒源取決於所使用的低功耗模式，以下是一些常見的喚醒源：
+
+1. 外部中斷：例如按鈕、傳感器等外部信號可以通過GPIO觸發中斷來喚醒微控制器。在配置低功耗模式之前，確保已經正確配置了GPIO中斷。
+2. 定時器：內部或外部RTC定時器可以設置成在特定時間或間隔喚醒微控制器。在配置低功耗模式之前，確保已經正確配置了RTC定時器。
+3. 看門狗定時器：獨立看門狗（IWDG）或窗口看門狗（WWDG）可以在特定時間間隔喚醒微控制器。在配置低功耗模式之前，確保已經正確配置了看門狗定時器。
+
+基於外部中斷的例子，實現從低功耗模式（Stop模式）喚醒並返回正常模式：
+
+```C
+#include "main.h"
+
+void SystemClock_Config(void);
+void EXTI15_10_IRQHandler_Config(void);
+
+int main(void)
+{
+    HAL_Init();
+    SystemClock_Config();
+
+    // 初始化LED和按鈕
+    BSP_LED_Init(LED2);
+    BSP_PB_Init(BUTTON_KEY, BUTTON_MODE_EXTI);
+
+    while (1)
+    {
+        // 檢查按鈕是否按下
+        if (BSP_PB_GetState(BUTTON_KEY) == GPIO_PIN_SET)
+        {
+            // 避免機械彈跳
+            HAL_Delay(50);
+
+            // 進入Stop模式
+            HAL_PWR_EnterSTOPMode(PWR_LOWPOWERREGULATOR_ON, PWR_STOPENTRY_WFI);
+
+            // 喚醒後，重新配置系統時鐘
+            SystemClock_Config();
+        }
+
+        // 在正常模式下閃爍LED
+        BSP_LED_On(LED2);
+        HAL_Delay(200);
+        BSP_LED_Off(LED2);
+        HAL_Delay(200);
+    }
+}
+
+// 外部中斷處理函數
+void EXTI15_10_IRQHandler(void)
+{
+    HAL_GPIO_EXTI_IRQHandler(USER_BUTTON_PIN);
+}
+
+// 外部中斷回調函數
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+    if (GPIO_Pin == USER_BUTTON_PIN)
+    {
+        // 在這裡處理按鈕觸發的事件
+    }
+}
+
+void SystemClock_Config(void)
+{
+    // 系統時鐘配置函數內容
+}
+```
 
 <h2 id="8.6">中斷（Interrupt）</h2>
 
