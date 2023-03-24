@@ -91,6 +91,8 @@ If there is related infringement or violation of related regulations, please con
       - [關閉文件 - filp_close()](#3.1.3.3)
       - [驅動讀寫範例](#3.1.3.4)
       - [Kernel_Read_txt_Test](#3.1.3.5)
+    - [dev_get_platdata和dev_get_drvdata](#3.1.4)
+    - [編譯成module的driver如何自動載入](#3.1.5)
   - [Char Device Driver](#3.2)
     - [Simple Example](#3.2.1)
   - [I2C](#3.3)
@@ -2829,6 +2831,84 @@ EXPORT_SYMBOL(kernel_write);
       dev_set_drvdata(&pdev->dev, data);
    }
    ```
+
+<h3 id="3.1.5">編譯成module的driver如何自動載入</h3>
+
+`/lib/modules/<kernel-version>/` 目錄下的模組不會自動載入
+
+在 Linux 系統中，內核模組（包括您的 my_module）通常存放在 `/lib/modules/<kernel-version>/` 目錄中。
+
+子目錄通常按功能劃分，例如 kernel/drivers 用於驅動程序，kernel/net 用於網絡相關的模組等。根據 my_module 的功能，您可以將其放置在相應的子目錄中。
+
+在將模組放置到適當的位置後，您需要運行以下命令以更新模組依賴信息：
+
+```bash
+sudo depmod -a
+```
+
+可以通過以下方式來加載這些模組：
+
+1. 將模組名稱添加到 `/etc/modules` 文件中。在文件中添加模組名稱，一行一個，然後保存並關閉文件。下次系統啟動時，這些模組將被自動加載。
+
+    ```bash
+    my_module
+    ```
+
+2. 使用 `modprobe <module-name>` 命令手動加載模組。這樣，模組將立即加載到內核中，而無需重新啟動系統。
+3. 為某些服務或應用程序指定自動加載特定模組的配置。例如，在 `/etc/modprobe.d/` 目錄下創建一個配置文件，並使用 `install` 和 `remove` 命令來定義模組的加載和卸載行為。
+
+   - 創建一個名為 my_module.conf 的文件：
+
+        ```bash
+        sudo touch /etc/modprobe.d/my_module.conf
+        ```
+
+   - 使用文本編輯器打開文件，根據需求添加以下內容，以展示不同的設置選項：
+     - 設置選項：
+        假設 my_module 擁有一個名為 buffer_size 的選項，您希望將其設置為 4096。在 my_module.conf 中添加以下內容：
+
+        ```bash
+        options my_module buffer_size=4096
+        ```
+
+     - 指定別名：
+        如果您希望使用不同的名稱來加載 my_module，可以為其指定一個別名。例如，將別名設置為 my_alias：
+
+        ```bash
+        alias my_alias my_module
+        ```
+
+        可以使用 modprobe my_alias 來加載 my_module
+
+     - 黑名單模組：
+        如果您不希望 my_module 被自動加載或作為其他模組的依賴加載，可以將其添加到黑名單中：
+
+        ```bash
+        blacklist my_module
+        ```
+
+     - 添加模組依賴：
+        假設 my_module 依賴於另一個名為 dependency_module 的模組。在這種情況下，您可以在 my_module.conf 中指定依賴關係，以便在加載 my_module 時自動加載 dependency_module：
+
+        ```bash
+        install my_module /sbin/modprobe dependency_module; /sbin/modprobe --ignore-install my_module
+        ```
+
+      - 您可以根據需要組合以上設置選項。以下是一個包含多個設置的 my_module.conf 範例：
+
+        ```bash
+        options my_module buffer_size=4096
+        alias my_alias my_module
+        blacklist my_module
+        install my_module /sbin/modprobe dependency_module; /sbin/modprobe --ignore-install my_module
+        ```
+
+
+請注意，依賴於硬體和系統需求，某些模組可能在系統啟動過程中被自動載入。不過，如果您需要在啟動時手動加載特定模組，最好將它們添加到 /etc/modules 文件中。
+
+
+
+
 
 
 <h2 id="3.2">Char Device Driver</h2>
