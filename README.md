@@ -81,6 +81,7 @@ If there is related infringement or violation of related regulations, please con
   - [TTY](#2.9)
     - [終端介紹](#2.9.1)
     - [TTY子系統](#2.9.2)
+  - [如何在Linux(Ubuntu)上編譯新的內核並更改](#2.10)
 - [Linux-Device-Drivers-Development](#3)
   - [概念速記](#3.1)
     - [mknod用法以及主次設備號](#3.1.1)
@@ -2644,6 +2645,92 @@ HEX
 
 ![tty_img03](./image/tty/tty_img03.PNG)
 
+<h2 id="2.10">如何在Linux(Ubuntu)上編譯新的內核並更改</h2>
+
+在 Ubuntu 上編譯並安裝新的 Linux 內核涉及幾個步驟。以下是編譯並安裝新內核的指南：
+
+1. 安裝編譯工具和相關依賴項：
+
+```bash
+sudo apt update
+sudo apt install build-essential libncurses-dev bison flex libssl-dev libelf-dev bc
+```
+
+2. 下載內核源碼：
+
+    前往 https://www.kernel.org/ 下載所需版本的內核源碼壓縮包，或使用 wget 下載：
+
+    ```bash
+    wget https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.x.y.tar.xz
+    ```
+
+    將 5.x.y 替換為實際版本號。
+
+3. 解壓縮並進入源碼目錄：
+
+    ```bash
+    tar -xf linux-5.x.y.tar.xz
+    cd linux-5.x.y
+    ```
+
+4. 配置內核選項：
+
+    您可以使用當前運行內核的配置作為基礎：
+
+    ```bash
+    cp /boot/config-$(uname -r) .config
+    ```
+
+    接下來，使用 menuconfig 進行客製化配置（可選）：
+
+    ```bash
+    make menuconfig
+    ```
+
+    此命令將打開內核配置界面。根據需求進行配置，然後保存退出。
+
+5. 編譯內核：
+
+    使用以下命令編譯內核，-j 參數後的數字表示同時運行的編譯進程數，通常設置為 CPU 核心數加 1。
+
+    ```bash
+    make -j$(nproc)
+    ```
+
+    這可能需要一段時間，具體取決於您的系統性能。
+
+6. 安裝模組和內核：
+
+    ```bash
+    sudo make modules_install
+    sudo make install
+    ```
+
+7. 更新 GRUB 並重啟：
+
+    更新 GRUB 菜單以識別新內核：
+
+    ```bash
+    sudo update-grub
+    ```
+
+    重啟系統：
+
+    ```bash
+    sudo reboot
+    ```
+
+8. 驗證新內核：
+
+    重啟後，使用以下命令驗證新內核是否已成功安裝並運行：
+
+    ```bash
+    uname -r
+    ```
+
+    如果一切正常，您將看到新的內核版本號。
+
+這就是在 Ubuntu 上編譯並安裝新內核的過程。在升級內核時，請確保充分了解新內核的功能和兼容性，以避免潛在問題。
 
 <h1 id="3">Linux-Device-Drivers-Development</h1>
 
