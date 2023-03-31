@@ -100,6 +100,7 @@ If there is related infringement or violation of related regulations, please con
     - [i2c-tool](#3.3.1)
     - [i2c通過調用ioctl來讀寫設備](#3.3.2)
     - [Read & Write through i2c from the user-space](#3.3.3)
+    - [i2c_smbus_read_byte_data & i2c_smbus_write_byte_data](#3.3.4)
 - [Linux下menuconfig與Kconfig基礎知識概要](#4)
   - [內核基礎](#4.1)
     - [內核和發行版的區別](#4.1.1)
@@ -3305,6 +3306,168 @@ echo 0 > /proc/sys/kernel/printk
 [i2c_lib.h](./code/I2C/i2c_lib.h)
 
 [i2c_lib.c](./code/I2C/i2c_lib.c)
+
+<h3 id="3.3.4">i2c_smbus_read_byte_data & i2c_smbus_write_byte_data</h3>
+
+`i2c_smbus_read_byte_data` 和 `i2c_smbus_write_byte_data` 是 Linux I2C（Inter-Integrated Circuit，兩線式串列匯流排）驅動程序中的一個函數，用於通過 SMBus（System Management Bus，系統管理匯流排）協議讀取或寫入連接到I2C總線的設備中寄存器的一個字節（8位）數據。
+
+```C
+s32 i2c_smbus_read_byte_data(const struct i2c_client *client, u8 command);
+```
+
+- 參數：
+  - client：指向i2c_client結構的指針，該結構描述了連接到I2C總線的設備。
+  - command：要讀取的寄存器的地址。
+- 返回值：
+  - 成功時，返回讀取到的字節數據（0到255之間的正整數）。
+  - 失敗時，返回一個負的錯誤代碼。
+- 範例：
+
+    ```C
+    #include <linux/i2c.h>
+    #include <linux/module.h>
+
+    #define DEVICE_ADDR 0x50 // 假設I2C設備地址為0x50
+    #define REGISTER_ADDR 0x10 // 假設要讀取的寄存器地址為0x10
+
+    static int read_i2c_device_data(struct i2c_client *client)
+    {
+        int ret;
+
+        // 讀取設備寄存器數據
+        ret = i2c_smbus_read_byte_data(client, REGISTER_ADDR);
+
+        if (ret < 0)
+        {
+            printk(KERN_ERR "Failed to read data from I2C device: %d\n", ret);
+            return ret;
+        }
+
+        printk(KERN_INFO "Data read from I2C device register 0x%02X: 0x%02X\n", REGISTER_ADDR, ret);
+
+        return 0;
+    }
+
+    static int __init i2c_read_byte_data_init(void)
+    {
+        struct i2c_adapter *adapter;
+        struct i2c_client client;
+
+        // 獲取I2C適配器
+        adapter = i2c_get_adapter(1); // 假設I2C總線編號為1
+        if (!adapter)
+        {
+            printk(KERN_ERR "Failed to get I2C adapter\n");
+            return -ENODEV;
+        }
+
+        // 初始化I2C客戶端數據結構
+        memset(&client, 0, sizeof(client));
+        client.adapter = adapter;
+        client.addr = DEVICE_ADDR;
+
+        // 讀取I2C設備數據
+        read_i2c_device_data(&client);
+
+        // 釋放I2C適配器
+        i2c_put_adapter(adapter);
+
+        return 0;
+    }
+
+    static void __exit i2c_read_byte_data_exit(void)
+    {
+        printk(KERN_INFO "I2C read byte data example module unloaded\n");
+    }
+
+    module_init(i2c_read_byte_data_init);
+    module_exit(i2c_read_byte_data_exit);
+
+    MODULE_LICENSE("GPL");
+    MODULE_AUTHOR("Your Name");
+    MODULE_DESCRIPTION("I2C read byte data example");
+    MODULE_VERSION("1.0");
+    ```
+
+```C
+int i2c_smbus_write_byte_data(const struct i2c_client *client, u8 command, u8 value);
+```
+
+- 參數：
+  - client：指向i2c_client結構的指針，該結構描述了連接到I2C總線的設備。
+  - command：要寫入的寄存器的地址。
+  - value：要寫入寄存器的字節數據。
+- 返回值：
+  - 成功時，返回0。
+  - 失敗時，返回一個負的錯誤代碼。
+- 範例：
+
+    ```C
+    #include <linux/i2c.h>
+    #include <linux/module.h>
+
+    #define DEVICE_ADDR 0x50 // 假設I2C設備地址為0x50
+    #define REGISTER_ADDR 0x10 // 假設要寫入的寄存器地址為0x10
+    #define REGISTER_VALUE 0x42 // 假設要寫入寄存器的數據為0x42
+
+    static int write_i2c_device_data(struct i2c_client *client)
+    {
+        int ret;
+
+        // 將數據寫入設備寄存器
+        ret = i2c_smbus_write_byte_data(client, REGISTER_ADDR, REGISTER_VALUE);
+
+        if (ret < 0)
+        {
+            printk(KERN_ERR "Failed to write data to I2C device: %d\n", ret);
+            return ret;
+        }
+
+        printk(KERN_INFO "Data written to I2C device register 0x%02X: 0x%02X\n", REGISTER_ADDR, REGISTER_VALUE);
+
+        return 0;
+    }
+
+    static int __init i2c_write_byte_data_init(void)
+    {
+        struct i2c_adapter *adapter;
+        struct i2c_client client;
+
+        // 獲取I2C適配器
+        adapter = i2c_get_adapter(1); // 假設I2C總線編號為1
+        if (!adapter)
+        {
+            printk(KERN_ERR "Failed to get I2C adapter\n");
+            return -ENODEV;
+        }
+
+        // 初始化I2C客戶端數據結構
+        memset(&client, 0, sizeof(client));
+        client.adapter = adapter;
+        client.addr = DEVICE_ADDR;
+
+        // 寫入I2C設備數據
+        write_i2c_device_data(&client);
+
+        // 釋放I2C適配器
+        i2c_put_adapter(adapter);
+
+        return 0;
+    }
+
+    static void __exit i2c_write_byte_data_exit(void)
+    {
+        printk(KERN_INFO "I2C write byte data example module unloaded\n");
+    }
+
+    module_init(i2c_write_byte_data_init);
+    module_exit(i2c_write_byte_data_exit);
+
+    MODULE_LICENSE("GPL");
+    MODULE_AUTHOR("Your Name");
+    MODULE_DESCRIPTION("I2C write byte data example");
+    MODULE_VERSION("1.0");
+    ```
 
 <h1 id="4">Linux下menuconfig與Kconfig基礎知識概要</h1>
 
