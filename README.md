@@ -97,6 +97,7 @@ If there is related infringement or violation of related regulations, please con
   - [Char Device Driver](#3.2)
     - [Simple Example](#3.2.1)
   - [I2C](#3.3)
+    - [i2c protocol](#3.3.0)
     - [i2c-tool](#3.3.1)
     - [i2c通過調用ioctl來讀寫設備](#3.3.2)
     - [Read & Write through i2c from the user-space](#3.3.3)
@@ -3072,6 +3073,12 @@ $ sudo chmod 666 /dev/example
 ```
 
 <h2 id="3.3">I2C</h2>
+
+<h3 id="3.3.0">i2c protocol</h3>
+
+![i2c_img07](./image/I2C/i2c_img07.png)
+
+![i2c_img08](./image/I2C/i2c_img08.png)
 
 <h3 id="3.3.1">i2c-tool</h3>
 
